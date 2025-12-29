@@ -1,21 +1,49 @@
 use std::f32::consts::PI;
 
-use bevy::prelude::*;
-use proj::Proj;
-
+use bevy::{prelude::*, transform::components::Transform};
 use crate::data::Data;
 
 pub struct CanSatEnvironmentPlugin;
 
 impl Plugin for CanSatEnvironmentPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, update_gizmos)
+        app
+            .add_systems(Startup, setup)
+            .add_systems(Update, update_gizmos)
+            .add_systems(Update, update_cansat_model)
             .init_gizmo_group::<Gizmos3D>();
     }
 }
 
 #[derive(Default, Reflect, GizmoConfigGroup)]
 struct Gizmos3D;
+
+#[derive(Component)]
+struct CanSatModel;
+
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>
+) {
+    let model = meshes.add(Cylinder::default());
+    let material = materials.add(StandardMaterial::default());
+    commands.spawn((
+        Name::new("CanSat model"),
+        CanSatModel,
+        Mesh3d(model),
+        MeshMaterial3d(material),
+    ));
+}
+
+fn update_cansat_model(
+    mut model: Single<&mut Transform, With<CanSatModel>>,
+    data: Res<Data>,
+) {
+    if let Some(position) = data.get_point_relative_position(data.current_data) {
+        model.translation = position;
+    }
+}
 
 fn update_gizmos(mut gizmos: Gizmos<Gizmos3D>, data: Res<Data>) {
     gizmos.grid(
