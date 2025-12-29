@@ -35,3 +35,5 @@ fn update_gizmos(mut gizmos: Gizmos<Gizmos3D>, data: Res<Data>) {
 
     gizmos.linestrip(coordinates, Color::WHITE);
 }
+
+

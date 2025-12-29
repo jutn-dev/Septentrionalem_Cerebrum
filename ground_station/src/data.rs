@@ -27,7 +27,7 @@ pub struct DataPoint {
     // 3d position to be used in the engine
     pub position: Vec3,
 
-    pub air_pressure: f32,
+    pub air_pressure: f64,
     //gyroscope: Vec3,
     //acceleration: Vec3,
 }
@@ -43,7 +43,7 @@ struct InDataPoint {
     pub lat: f32,
 
     //sensors
-    pub air_pressure: f32,
+    pub air_pressure: f64,
     //gyroscope: Vec3,
     //acceleration: Vec3,
 }
