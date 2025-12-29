@@ -26,12 +26,11 @@ fn update_gizmos(mut gizmos: Gizmos<Gizmos3D>, data: Res<Data>) {
         Srgba::rgba_u8(92, 92, 92, 30),
     );
 
-
-    let first_data_point = &data.data_points[0];
-
     let mut coordinates = vec![];
-    for data_point in data.data_points.iter() {
-        coordinates.push(first_data_point.position - data_point.position);
+    for (i,_data_point) in data.data_points.iter().enumerate() {
+        if let Some(position) = data.get_point_relative_position(i) {
+            coordinates.push(position);
+        }
     }
 
     gizmos.linestrip(coordinates, Color::WHITE);

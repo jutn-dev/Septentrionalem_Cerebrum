@@ -48,6 +48,7 @@ struct InDataPoint {
     //acceleration: Vec3,
 }
 
+#[allow(unused)]
 impl Data {
     pub fn data_form_json_file(path: &str) -> Result<Self, std::io::Error> {
         match File::open(path) {
@@ -68,6 +69,23 @@ impl Data {
                 Err(error)
             }
         }
+    }
+    pub fn get_current_data_point(&self) -> &DataPoint {
+        &self.data_points[self.current_data]
+    }
+    /// returns relative position of data point. If no data point exists or specific `DataPoint`
+    /// doesn't exists returns `None`
+    pub fn get_point_relative_position(&self, index: usize) -> Option<Vec3> {
+        if self.data_points.is_empty() {
+            return None;
+        }
+        if index > self.data_points.len() - 1 {
+            return None;
+        }
+
+        let relative_position = self.data_points[0].position - self.data_points[index].position;
+        Some(relative_position)
+
     }
 }
 
