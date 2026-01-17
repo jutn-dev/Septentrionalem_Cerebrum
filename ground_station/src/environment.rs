@@ -36,7 +36,9 @@ fn setup(
 }
 
 fn update_cansat_model(mut model: Single<&mut Transform, With<CanSatModel>>, data: Res<Data>) {
-    let current_data = data.get_closest_point_in_time(data.current_time);
+    let Some(current_data) = data.get_closest_point_in_time(data.current_time) else {
+        return;
+    };
     if let Some(position) = data.get_point_relative_position(current_data) {
         model.translation = position;
     }

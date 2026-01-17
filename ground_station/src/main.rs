@@ -24,6 +24,6 @@ fn main() {
             enable_absorb_bevy_input_system: true,
             ..default()
         })
-        .insert_resource(Data::data_form_json_file("data.json").unwrap())
+        .init_resource::<Data>()
         .run();
 }

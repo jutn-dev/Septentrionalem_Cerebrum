@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use proj::Proj;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Resource, Reflect)]
+#[derive(Debug, Clone, Default, Resource, Reflect)]
 ///Data from CanSat
 pub struct Data {
     //data points are expected to be in chronological order.
@@ -52,7 +52,7 @@ struct InDataPoint {
 
 #[allow(unused)]
 impl Data {
-    pub fn data_form_json_file(path: &str) -> Result<Self, std::io::Error> {
+    pub fn data_form_json_file(path: String) -> Result<Self, std::io::Error> {
         match File::open(path) {
             Ok(json) => {
                 let reader = BufReader::new(json);
@@ -94,11 +94,10 @@ impl Data {
         Some(relative_time)
     }
 
-    pub fn get_closest_point_in_time(&self, time: u64) -> &DataPoint {
+    pub fn get_closest_point_in_time(&self, time: u64) -> Option<&DataPoint> {
         self.data_points
             .iter()
             .min_by_key(|d| d.time.abs_diff(time))
-            .unwrap()
     }
 }
 

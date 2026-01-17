@@ -16,6 +16,7 @@ use bevy_inspector_egui::egui::Sense;
 use bevy_inspector_egui::egui::Shape;
 use bevy_inspector_egui::egui::Slider;
 use bevy_inspector_egui::egui::Stroke;
+use bevy_inspector_egui::egui::TextEdit;
 use bevy_inspector_egui::egui::Vec2b;
 use chrono::DateTime;
 use chrono::Timelike;
@@ -40,11 +41,48 @@ pub struct CanSatUIPlugin;
 
 impl Plugin for CanSatUIPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(EguiPrimaryContextPass, (data_ui, time_line_ui, graph_ui));
+        app.init_resource::<LoadData>()
+            .add_systems(EguiPrimaryContextPass, (data_ui, time_line_ui, graph_ui));
     }
 }
 
-fn data_ui(mut context: EguiContexts, data: Res<Data>) {}
+#[derive(Debug, Clone, Default, PartialEq)]
+enum LoadDataMode {
+    #[default]
+    File,
+    Udp,
+    Serial,
+}
+
+#[derive(Debug, Clone, Resource, Default)]
+struct LoadData {
+    path: String,
+    mode: LoadDataMode,
+}
+
+fn data_ui(mut context: EguiContexts, mut data: ResMut<Data>, mut load_data: ResMut<LoadData>) {
+    egui::Window::new("Load Data").show(context.ctx_mut().unwrap(), |ui| {
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut load_data.mode, LoadDataMode::File, "File");
+            ui.selectable_value(&mut load_data.mode, LoadDataMode::Udp, "UDP");
+            ui.selectable_value(&mut load_data.mode, LoadDataMode::Serial, "Serial");
+        });
+        match load_data.mode {
+            LoadDataMode::File => {
+                ui.add(TextEdit::singleline(&mut load_data.path).hint_text("file path"));
+                if ui.button("Load").clicked() {
+                    let result = Data::data_form_json_file(load_data.path.clone());
+                    match result {
+                        Ok(result_data) => *data = result_data,
+                        Err(e) => error!("{e}"),
+                    }
+                }
+            }
+            LoadDataMode::Udp => (),
+            LoadDataMode::Serial => (),
+        }
+    });
+}
 
 fn time_line_ui(mut context: EguiContexts, mut data: ResMut<Data>) {
     egui::TopBottomPanel::bottom("Timeline")
@@ -78,6 +116,7 @@ fn time_line_ui(mut context: EguiContexts, mut data: ResMut<Data>) {
                     plot_ui.vline(VLine::new("", data.current_time as f64).color(Color32::RED));
                     if data_button_clicked {
                         plot_ui.set_plot_bounds_x(
+                            //TODO remove unwrap
                             points.first().unwrap()[0]..=points.last().unwrap()[0],
                         );
                     }
@@ -118,8 +157,11 @@ fn time_line_ui(mut context: EguiContexts, mut data: ResMut<Data>) {
 }
 
 fn graph_ui(mut context: EguiContexts, mut data: ResMut<Data>) {
-    let current_data = data.get_closest_point_in_time(data.current_time);
     egui::Window::new("Graph").show(context.ctx_mut().unwrap(), |ui| {
+        let Some(current_data) = data.get_closest_point_in_time(data.current_time) else {
+            ui.label("no data points found");
+            return;
+        };
         ui.horizontal(|ui| {
             ui.label(format!("lon: {}", current_data.lon));
             ui.label(format!("lat: {}", current_data.lat));
@@ -159,7 +201,9 @@ fn graph_ui(mut context: EguiContexts, mut data: ResMut<Data>) {
             }
             marks
         };
-        let x_axis = vec![AxisHints::new_x().label("Time").formatter(x_axis_time_formatter)];
+        let x_axis = vec![AxisHints::new_x()
+            .label("Time")
+            .formatter(x_axis_time_formatter)];
         Plot::new("Graph")
             .legend(Legend::default())
             .custom_x_axes(x_axis)
@@ -183,7 +227,6 @@ fn x_axis_time_formatter(mark: GridMark, _range: &RangeInclusive<f64>) -> String
 fn coordinates_formatter(plot_point: &PlotPoint, _plot_bounds: &PlotBounds) -> String {
     time_formatter(plot_point.x as u64)
 }
-
 
 fn time_formatter(time: u64) -> String {
     let date_time = DateTime::from_timestamp_millis(time as i64).unwrap();

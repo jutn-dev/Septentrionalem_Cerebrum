@@ -34,7 +34,7 @@ fn spawn_camera(mut commands: Commands) {
             move_button: MouseButton::Middle,
             x_speed: 0.005,
             y_speed: 0.005,
-            zoom_size: 5.,
+            zoom_size: 10.,
             zoom: 50.,
             target_position: Vec3::ZERO,
         },
@@ -68,7 +68,12 @@ fn camera_movement(
 
 fn set_camera_target(mut camera: Single<&mut OrbitCamera, With<Camera3d>>, data: Res<Data>) {
     let current_data = data.get_closest_point_in_time(data.current_time);
-    if let Some(position) = data.get_point_relative_position(current_data) {
-        camera.target_position = position;
-    }
+    let Some(current_data) = current_data else {
+        return;
+    };
+    let Some(position) = data.get_point_relative_position(current_data) else {
+        return;
+    };
+    camera.target_position = position;
+        
 }
