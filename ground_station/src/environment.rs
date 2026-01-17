@@ -1,14 +1,13 @@
 use std::f32::consts::PI;
 
-use bevy::{prelude::*, transform::components::Transform};
 use crate::data::Data;
+use bevy::{prelude::*, transform::components::Transform};
 
 pub struct CanSatEnvironmentPlugin;
 
 impl Plugin for CanSatEnvironmentPlugin {
     fn build(&self, app: &mut App) {
-        app
-            .add_systems(Startup, setup)
+        app.add_systems(Startup, setup)
             .add_systems(Update, update_gizmos)
             .add_systems(Update, update_cansat_model)
             .init_gizmo_group::<Gizmos3D>();
@@ -24,7 +23,7 @@ struct CanSatModel;
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let model = meshes.add(Cylinder::default());
     let material = materials.add(StandardMaterial::default());
@@ -36,11 +35,9 @@ fn setup(
     ));
 }
 
-fn update_cansat_model(
-    mut model: Single<&mut Transform, With<CanSatModel>>,
-    data: Res<Data>,
-) {
-    if let Some(position) = data.get_point_relative_position(data.current_data) {
+fn update_cansat_model(mut model: Single<&mut Transform, With<CanSatModel>>, data: Res<Data>) {
+    let current_data = data.get_closest_point_in_time(data.current_time);
+    if let Some(position) = data.get_point_relative_position(current_data) {
         model.translation = position;
     }
 }
@@ -55,13 +52,11 @@ fn update_gizmos(mut gizmos: Gizmos<Gizmos3D>, data: Res<Data>) {
     );
 
     let mut coordinates = vec![];
-    for (i,_data_point) in data.data_points.iter().enumerate() {
-        if let Some(position) = data.get_point_relative_position(i) {
+    for data_point in data.data_points.iter() {
+        if let Some(position) = data.get_point_relative_position(data_point) {
             coordinates.push(position);
         }
     }
 
     gizmos.linestrip(coordinates, Color::WHITE);
 }
-
-

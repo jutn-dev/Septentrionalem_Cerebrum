@@ -7,8 +7,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Resource, Reflect)]
 ///Data from CanSat
 pub struct Data {
+    //data points are expected to be in chronological order.
+    //If not you might get some unexpected results.
     pub data_points: Vec<DataPoint>,
-    pub current_data: usize,
+    pub current_time: u64,
 }
 
 ///one point of data
@@ -54,14 +56,16 @@ impl Data {
         match File::open(path) {
             Ok(json) => {
                 let reader = BufReader::new(json);
-                let in_data: Vec<InDataPoint> = serde_json::from_reader(reader).unwrap();
-                let data: Vec<DataPoint> = in_data
+                let in_data: Vec<InDataPoint> = serde_json::from_reader(reader)?;
+                let mut data: Vec<DataPoint> = in_data
                     .iter()
                     .map(|d| DataPoint::from_in_data_point(d))
                     .collect();
+                data.sort();
+
                 Ok(Data {
                     data_points: data,
-                    current_data: 0,
+                    current_time: 0,
                 })
             }
             Err(error) => {
@@ -70,22 +74,31 @@ impl Data {
             }
         }
     }
-    pub fn get_current_data_point(&self) -> &DataPoint {
-        &self.data_points[self.current_data]
-    }
     /// returns relative position of data point. If no data point exists or specific `DataPoint`
     /// doesn't exists returns `None`
-    pub fn get_point_relative_position(&self, index: usize) -> Option<Vec3> {
+    pub fn get_point_relative_position(&self, data_point: &DataPoint) -> Option<Vec3> {
         if self.data_points.is_empty() {
             return None;
         }
-        if index > self.data_points.len() - 1 {
+
+        let relative_position = self.data_points[0].position - data_point.position;
+        Some(relative_position)
+    }
+
+    pub fn get_relative_time(&self, data_point: &DataPoint) -> Option<u64> {
+        if self.data_points.is_empty() {
             return None;
         }
 
-        let relative_position = self.data_points[0].position - self.data_points[index].position;
-        Some(relative_position)
+        let relative_time = self.data_points[0].time - data_point.time;
+        Some(relative_time)
+    }
 
+    pub fn get_closest_point_in_time(&self, time: u64) -> &DataPoint {
+        self.data_points
+            .iter()
+            .min_by_key(|d| d.time.abs_diff(time))
+            .unwrap()
     }
 }
 
@@ -112,3 +125,21 @@ impl DataPoint {
         Vec3::new(coordinate.0, 0., coordinate.1)
     }
 }
+
+impl Ord for DataPoint {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.time.cmp(&other.time)
+    }
+}
+impl PartialOrd for DataPoint {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl PartialEq for DataPoint {
+    /// if self.time is same
+    fn eq(&self, other: &Self) -> bool {
+        self.time == other.time
+    }
+}
+impl Eq for DataPoint {}
