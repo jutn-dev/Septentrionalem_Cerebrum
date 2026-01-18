@@ -1,6 +1,5 @@
 use bevy::{
     input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll},
-    math::VectorSpace,
     prelude::*,
 };
 use bevy_inspector_egui::bevy_egui::input::egui_wants_any_input;
@@ -75,5 +74,4 @@ fn set_camera_target(mut camera: Single<&mut OrbitCamera, With<Camera3d>>, data:
         return;
     };
     camera.target_position = position;
-        
 }

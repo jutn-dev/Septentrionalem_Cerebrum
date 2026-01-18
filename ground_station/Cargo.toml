@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = {version = "0.17", features = ["wayland"]}
-bevy-inspector-egui = "0.35"
+bevy = {version = "0.18", features = ["wayland"]}
+bevy-inspector-egui = "0.36"
 egui_plot = "0.34"
 
 chrono = "0.4"

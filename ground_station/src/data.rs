@@ -57,10 +57,8 @@ impl Data {
             Ok(json) => {
                 let reader = BufReader::new(json);
                 let in_data: Vec<InDataPoint> = serde_json::from_reader(reader)?;
-                let mut data: Vec<DataPoint> = in_data
-                    .iter()
-                    .map(|d| DataPoint::from_in_data_point(d))
-                    .collect();
+                let mut data: Vec<DataPoint> =
+                    in_data.iter().map(DataPoint::from_in_data_point).collect();
                 data.sort();
 
                 Ok(Data {
