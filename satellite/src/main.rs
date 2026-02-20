@@ -3,9 +3,10 @@ use esp_idf_svc::hal::delay::BLOCK;
 use esp_idf_svc::hal::gpio::AnyIOPin;
 use esp_idf_svc::{hal::gpio::Pin, sys::EspError};
 
-use crate::pressure_sensor::{read_pressure, read_temp};
+use crate::pressure_sensor::{PressureSensor,};
 
 mod pressure_sensor;
+
 
 fn main() -> Result<(), EspError> {
     // It is necessary to call this function once. Otherwise, some patches to the runtime
@@ -36,14 +37,14 @@ fn main() -> Result<(), EspError> {
 
     let baro_config = hal::i2c::config::Config::new(); //.tx_buffer_length(128).rx_buffer_length(128);
     let mut baro = hal::i2c::I2cDriver::new(i2c, sda, scl, &baro_config)?;
-    
+    let mut pressure_sesnor = PressureSensor::init(baro)?;
 
     loop {
         delay.delay_ms(100);
         //        uart2.write(&[255])?;
         //let size = uart2.read(&mut buf, BLOCK)?;
-        log::info!("Temp: {:?}",read_temp(&mut baro)?);
-        log::info!("Pressure: {:?}",read_pressure(&mut baro)?);
+        log::info!("Temp: {:?}",pressure_sesnor.read_temp()?);
+        log::info!("Pressure: {:?}",pressure_sesnor.read_pressure()?);
     }
 }
 

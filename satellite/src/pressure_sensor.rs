@@ -3,12 +3,14 @@ use esp_idf_svc::hal::delay::BLOCK;
 use esp_idf_svc::hal::i2c::I2cDriver;
 use esp_idf_svc::sys::EspError;
 
-struct PressureSensor<'a> {
+pub struct PressureSensor<'a> {
     i2c_driver: I2cDriver<'a>,
 }
 
 impl<'a> PressureSensor<'a> {
     pub fn init(mut i2c_driver: I2cDriver<'a>) -> Result<Self, EspError> {
+   
+//TODO add hardware software reset thing
         let baro_address = 0x5C;
 
         let mut ctrl_reg1 = [0; 1];
