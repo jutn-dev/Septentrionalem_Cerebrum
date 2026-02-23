@@ -1,74 +1,79 @@
-use std::vec;
-
 use serde::{Deserialize, Serialize};
-
-///incoming data points frpm CanSat
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct DataPoint {
-    ///time of gps
-    pub time: u64,
-
-    //coordinates
-    pub lon: f32,
-    pub lat: f32,
-
-    //sensors
-    pub tempeurature: f32,
-    pub air_pressure: f64,
-    //gyroscope: Vec3,
-    //acceleration: Vec3,
-}
-
-///DataTypes that can be sent through `Serial`
-pub enum DataTypes {
-    DataPoint,
-}
-
-pub struct Message {
-    data_type: DataTypes
-}
 
 /// The Seroal communication spec
 ///
-/// Header 2 bytes
-/// 0x06 and 0x01
-///
-/// packet type id 1 byte
-///
-/// full packet sizes including header, type, size, data and end byte
+/// Header byte
+/// 0x06
 ///
 /// Data section can contain any data.
-/// if data contains header (0x06 0x01) or end byte (0xFF) or control byte (\) it has to be marked with control byte \
+/// if data contains header (0x06) or end byte (0xFF) or control byte (0x0A) it has to be marked with control byte (0x0A)
 ///
 /// end byte
 /// 0xFF
-#[derive(Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Serial {
     current_data: Vec<u8>,
-}
-
-
-
-trait DataType<T> {
-    fn get_data() -> Vec<u8>;
-    fn to_data() -> T;
+    reading_data: bool,
+    ctrl_byte_last: bool,
 }
 
 const HEADER: u8 = 0x06;
 const END: u8 = 0xFF;
 const CTRL_BYTE: u8 = 0x0A;
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum ReadError {
+    NoCompletePacket,
+    PostcardError(postcard::Error),
+}
+
+impl From<postcard::Error> for ReadError {
+    fn from(value: postcard::Error) -> Self {
+        ReadError::PostcardError(value)
+    }
+}
+
 #[allow(dead_code)]
 impl Serial {
+    /// returns `None` if no comlete packet is read or `Vec<T>` if packets are recieved
+    fn read<T: for<'a> Deserialize<'a>>(
+        &mut self,
+        input_buffer: Vec<u8>,
+    ) -> Result<Vec<T>, ReadError> {
+        let mut complete_packets = vec![];
+        for byte in input_buffer {
+            if byte == CTRL_BYTE && !self.ctrl_byte_last {
+                self.ctrl_byte_last = true;
+                continue;
+            }
 
-    fn read(&mut self, input_buffer: Vec<u8>) -> Option<(DataTypes, Vec<u8)>> {
+            if byte == HEADER && !self.ctrl_byte_last {
+                self.reading_data = true;
+                self.current_data.clear();
+                continue;
+            }
 
+            if byte != END {
+                if self.reading_data {
+                    self.current_data.push(byte);
+                }
+                continue;
+            }
+
+            complete_packets.push(postcard::from_bytes(&self.current_data)?);
+            self.reading_data = false;
+            self.ctrl_byte_last = false;
+            self.current_data.clear();
+        }
+        if complete_packets.is_empty() {
+            return Err(ReadError::NoCompletePacket);
+        }
+        Ok(complete_packets)
     }
 
-    pub fn to_message(
-        data_type: DataTypes,
-        mut message_data: Vec<u8>,
-    ) -> Vec<u8> {
+    pub fn to_message<T: Serialize>(&self, data: T) -> Result<Vec<u8>, postcard::Error> {
+        let mut message_data = postcard::to_allocvec(&data)?;
+
         // adding control bytes if needed
         let mut indexes = vec![];
         for (i, d) in message_data.iter().enumerate() {
@@ -85,32 +90,65 @@ impl Serial {
 
         //constructing data
         let mut data: Vec<u8> = vec![HEADER];
-        data.push(data_type as u8);
-        data.push(message_data.len() as u8 + 4);
+        //data.push(data_type_id as u8);
+        //data.push(message_data.len() as u8 + 4);
         data.append(&mut message_data);
         data.push(0xFF);
 
-        data
+        Ok(data)
     }
-}
-
-impl DataPoint {
-    //fn to_binary() -> [u8; size_of::<DataPoint>()] {}
-
-    //fn from_binary(data: [u8; size_of::<DataPoint>()]) -> Self {}
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct DataPoint {
+        val1: i32,
+        val2: u8,
+        val3: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct DataPoint2 {
+        val1: i32,
+        val2: u8,
+        val3: String,
+    }
+    ///DataTypes that can be sent through `Serial`
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    pub enum DataTypes {
+        DataPoint(DataPoint),
+        DataPoint2(DataPoint2),
+    }
+
     #[test]
-    fn to_message_test() {
+    fn serial_test() {
+        let mut serial = Serial::default();
+        let data_point = DataTypes::DataPoint(DataPoint {
+            val1: 5,
+            val2: 4,
+            val3: String::from("testing"),
+        });
 
-        let message_data = vec![0x04, 0x07, 0x43, 0x5];
-        assert_eq!(Serial::to_message(DataTypes::DataPoint, message_data), [HEADER, 0x0, 0x8, 0x04, 0x07, 0x43, 0x5, END]);
+        let deser = postcard::to_allocvec(&data_point).unwrap();
+        let ser: DataTypes = postcard::from_bytes(&deser).unwrap();
+        assert_eq!(data_point, ser);
 
-        let message_data = vec![0x04, END, 0x43, 0x5];
-        assert_eq!(Serial::to_message(DataTypes::DataPoint, message_data), [HEADER, 0x0, 0x9, 0x04, CTRL_BYTE, END, 0x43, 0x5, END]);
+        let data_u8 = serial.to_message(data_point.clone()).unwrap();
+        println!("{:?} \n{:?}", deser, data_u8);
+        let data = serial.read::<DataTypes>(data_u8.clone()).unwrap();
+        assert_eq!(data_point, data[0]);
+
+        let data_point2 = DataTypes::DataPoint2(DataPoint2 {
+            val1: 5,
+            val2: 4,
+            val3: String::from("testing"),
+        });
+        let data2_u8 = serial.to_message(data_point2.clone()).unwrap();
+        let data2 = serial.read::<DataTypes>(data2_u8.clone()).unwrap();
+        assert_ne!(data_u8, data2_u8);
+        assert_ne!(data[0], data2[0]);
     }
 }
