@@ -33,6 +33,7 @@ fn setup(
         Mesh3d(model),
         MeshMaterial3d(material),
     ));
+    commands.spawn(DirectionalLight::default());
 }
 
 fn update_cansat_model(mut model: Single<&mut Transform, With<CanSatModel>>, data: Res<Data>) {

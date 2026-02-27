@@ -22,13 +22,11 @@ pub struct Data {
 pub struct DataPoint {
     ///time of gps
     pub time: u64,
-
     //coordinates
     pub lon: f32,
     pub lat: f32,
     // 3d position to be used in the engine
     pub position: Vec3,
-
     pub air_pressure: f64,
     //gyroscope: Vec3,
     //acceleration: Vec3,
@@ -39,11 +37,9 @@ pub struct DataPoint {
 struct InDataPoint {
     ///time of gps
     pub time: u64,
-
     //coordinates
     pub lon: f32,
     pub lat: f32,
-
     //sensors
     pub air_pressure: f64,
     //gyroscope: Vec3,
