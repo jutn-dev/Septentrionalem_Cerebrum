@@ -1,5 +1,25 @@
 use serde::{Deserialize, Serialize};
 
+
+#[allow(unused)]
+mod data {
+    use glam::Vec3;
+
+    enum DataTypes {
+        FullTemp(FullTempData),
+        Gyroscope(GyroscopeData)
+    }
+
+    struct FullTempData {
+        temp_pressure: f32, 
+        temp_gyro: f32, 
+    }
+
+    struct GyroscopeData {
+        gyro: Vec3,
+    }
+}
+
 /// The Seroal communication spec
 ///
 /// Header byte

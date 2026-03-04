@@ -30,7 +30,7 @@ pub struct DataPoint {
     pub position: Vec3,
 
     pub air_pressure: f64,
-    //gyroscope: Vec3,
+    gyroscope: Vec3,
     //acceleration: Vec3,
 }
 
