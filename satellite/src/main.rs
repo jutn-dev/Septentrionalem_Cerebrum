@@ -1,3 +1,5 @@
+use communication::Serial;
+use communication::data::DataTypes;
 use esp_idf_svc::hal;
 use esp_idf_svc::hal::delay::BLOCK;
 use esp_idf_svc::hal::gpio::AnyIOPin;
@@ -39,12 +41,21 @@ fn main() -> Result<(), EspError> {
     let mut baro = hal::i2c::I2cDriver::new(i2c, sda, scl, &baro_config)?;
     let mut pressure_sesnor = PressureSensor::init(baro)?;
 
+    let bin_serial = Serial::default();
+
+
     loop {
         delay.delay_ms(100);
         //        uart2.write(&[255])?;
         //let size = uart2.read(&mut buf, BLOCK)?;
-        log::info!("Temp: {:?}",pressure_sesnor.read_temp()?);
-        log::info!("Pressure: {:?}",pressure_sesnor.read_pressure()?);
+        //log::info!("Temp: {:?}",pressure_sesnor.read_temp()?);
+        let pressure = pressure_sesnor.read_pressure()?;
+        log::info!("Pressure: {:?}", pressure);
+        let data_type = DataTypes::Pressure(communication::data::PressureData { time: 0, pressure });
+        let data = bin_serial.to_message(data_type).unwrap();
+        //log::info!("D: {:?}", data.as_slice());
+        //uart2.write(data.as_slice());
+        uart2.write(&[6, 255, 56, 53, 42, 2])?;
     }
 }
 
