@@ -7,22 +7,26 @@ use bevy_inspector_egui::bevy_egui::EguiPrimaryContextPass;
 use bevy_inspector_egui::egui;
 use bevy_inspector_egui::egui::Button;
 use bevy_inspector_egui::egui::Color32;
+use bevy_inspector_egui::egui::ComboBox;
+use bevy_inspector_egui::egui::DragValue;
 use bevy_inspector_egui::egui::TextEdit;
 use bevy_inspector_egui::egui::Vec2b;
 use chrono::DateTime;
 use chrono::Timelike;
 use egui_plot::{
-    AxisHints, CoordinatesFormatter, GridInput, GridMark, Legend, Line, Plot, PlotBounds,
-    PlotPoint, Points, VLine, log_grid_spacer,
+    log_grid_spacer, AxisHints, CoordinatesFormatter, GridInput, GridMark, Legend, Line, Plot,
+    PlotBounds, PlotPoint, Points, VLine,
 };
 
 use crate::data::Data;
+use crate::serial_data::InitSerialPortMessage;
 
 pub struct CanSatUIPlugin;
 
 impl Plugin for CanSatUIPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<LoadData>()
+        app.init_resource::<LoadDataFile>()
+            .init_resource::<LoadDataSerial>()
             .add_systems(EguiPrimaryContextPass, (data_ui, time_line_ui, graph_ui));
     }
 }
@@ -31,22 +35,34 @@ impl Plugin for CanSatUIPlugin {
 enum LoadDataMode {
     #[default]
     File,
-    Udp,
     Serial,
+    Udp,
 }
 
 #[derive(Debug, Clone, Resource, Default)]
-struct LoadData {
+struct LoadDataFile {
     path: String,
     mode: LoadDataMode,
 }
 
-fn data_ui(mut context: EguiContexts, mut data: ResMut<Data>, mut load_data: ResMut<LoadData>) {
+#[derive(Debug, Clone, Resource, Default)]
+struct LoadDataSerial {
+    path: String,
+    baudrate: u32,
+}
+
+fn data_ui(
+    mut context: EguiContexts,
+    mut data: ResMut<Data>,
+    mut load_data: ResMut<LoadDataFile>,
+    mut load_serial: ResMut<LoadDataSerial>,
+    mut init_serial_message: MessageWriter<InitSerialPortMessage>
+) {
     egui::Window::new("Load Data").show(context.ctx_mut().unwrap(), |ui| {
         ui.horizontal(|ui| {
             ui.selectable_value(&mut load_data.mode, LoadDataMode::File, "File");
-            ui.selectable_value(&mut load_data.mode, LoadDataMode::Udp, "UDP");
             ui.selectable_value(&mut load_data.mode, LoadDataMode::Serial, "Serial");
+            ui.selectable_value(&mut load_data.mode, LoadDataMode::Udp, "UDP");
         });
         match load_data.mode {
             LoadDataMode::File => {
@@ -59,8 +75,26 @@ fn data_ui(mut context: EguiContexts, mut data: ResMut<Data>, mut load_data: Res
                     }
                 }
             }
+            LoadDataMode::Serial => {
+                ComboBox::from_label("serial port").show_ui(ui, |ui| {
+                    let ports = serialport::available_ports().unwrap();
+                    for port in ports {
+                        ui.selectable_value(
+                            &mut load_serial.path,
+                            port.port_name.clone(),
+                            port.port_name,
+                        );
+                    }});
+                ui.add(DragValue::new(&mut load_serial.baudrate));
+                if ui.button("Open").clicked() {
+                    init_serial_message.write(InitSerialPortMessage {
+                        path: load_serial.path.clone(),
+                        baudrate: load_serial.baudrate,
+                    });
+                }
+
+            }
             LoadDataMode::Udp => (),
-            LoadDataMode::Serial => (),
         }
     });
 }
@@ -143,16 +177,26 @@ fn graph_ui(mut context: EguiContexts, data: ResMut<Data>) {
             ui.label("no data points found");
             return;
         };
+        //TODO
+        /*
         ui.horizontal(|ui| {
             ui.label(format!("lon: {}", current_data.lon));
             ui.label(format!("lat: {}", current_data.lat));
             ui.label(format!("({})", current_data.position));
         });
+        */
 
         let points: Vec<[f64; 2]> = data
             .data_points
             .iter()
-            .map(|d| [d.time as f64, d.air_pressure])
+            .filter_map(|d| {
+                if let Some(pressure) = d.air_pressure {
+                    Some([d.time as f64, pressure as f64])
+                } else {
+                    None
+                }
+            })
+            //.map(|a| [a.time as f64, a.air_pressure])
             .collect();
         let _spaces = |input: GridInput| {
             let (min, max) = input.bounds;
@@ -177,11 +221,9 @@ fn graph_ui(mut context: EguiContexts, data: ResMut<Data>) {
             }
             marks
         };
-        let x_axis = vec![
-            AxisHints::new_x()
-                .label("Time")
-                .formatter(x_axis_time_formatter),
-        ];
+        let x_axis = vec![AxisHints::new_x()
+            .label("Time")
+            .formatter(x_axis_time_formatter)];
         Plot::new("Graph")
             .legend(Legend::default())
             .custom_x_axes(x_axis)

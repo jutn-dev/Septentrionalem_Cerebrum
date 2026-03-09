@@ -1,5 +1,37 @@
 use serde::{Deserialize, Serialize};
 
+
+#[allow(unused)]
+pub mod data {
+    use glam::Vec3;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub enum DataTypes {
+        Pressure(PressureData),
+        //FullTemp(PressureData),
+        //Gyroscope(GyroscopeData)
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct PressureData {
+        pub time: u64,
+        pub pressure: f32, 
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct FullTempData {
+        pub time: u64,
+        pub temp_pressure: f32, 
+        pub temp_gyro: f32, 
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct GyroscopeData {
+        gyro: Vec3,
+    }
+}
+
 /// The Seroal communication spec
 ///
 /// Header byte
@@ -36,7 +68,7 @@ impl From<postcard::Error> for ReadError {
 #[allow(dead_code)]
 impl Serial {
     /// returns `None` if no comlete packet is read or `Vec<T>` if packets are recieved
-    fn read<T: for<'a> Deserialize<'a>>(
+    pub fn read<T: for<'a> Deserialize<'a>>(
         &mut self,
         input_buffer: Vec<u8>,
     ) -> Result<Vec<T>, ReadError> {
@@ -54,6 +86,7 @@ impl Serial {
             }
 
             if byte != END {
+                self.ctrl_byte_last = false;
                 if self.reading_data {
                     self.current_data.push(byte);
                 }

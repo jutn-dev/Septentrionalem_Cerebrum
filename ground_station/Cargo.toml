@@ -6,14 +6,17 @@ edition = "2024"
 
 
 [dependencies]
-bevy = {version = "0.18", features = ["wayland"]}
+communication = {path = "../communication/"}
+
+bevy = {version = "0.18", features = ["dynamic_linking", "wayland"]}
 bevy-inspector-egui = "0.36"
 egui_plot = "0.34"
 
+serialport = "4.8"
 chrono = "0.4"
 serde_json = "1.0"
 serde = {version = "1.0"}
 proj = "0.31"
 
-[dev-dependencies]
-bevy = {version = "0.18", features = ["dynamic_linking", "wayland"]}
+#[dev-dependencies]
+#bevy = {version = "0.18", features = ["dynamic_linking", "wayland"]}
