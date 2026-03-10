@@ -31,6 +31,7 @@ pub struct Data {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataPoint {
     pub time: u64,
+    pub temp: Option<f32>,
     pub position: Option<Position>,
     pub air_pressure: Option<f32>,
     pub gyroscope: Option<Vec3>,
@@ -119,6 +120,7 @@ impl DataPoint {
         match data_types {
             DataTypes::Pressure(pressure_data) => Self {
                 time: pressure_data.time,
+                temp: None,
                 position: None,
                 air_pressure: Some(pressure_data.pressure),
                 gyroscope: None,

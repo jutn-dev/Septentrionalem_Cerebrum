@@ -3,6 +3,7 @@ use std::{io::Read, time::Duration};
 use crate::data::Data;
 use bevy::prelude::*;
 use communication::{ReadError, data::DataTypes};
+use serialport::SerialPort;
 #[cfg(unix)]
 use serialport::TTYPort;
 
@@ -48,8 +49,6 @@ fn read_serial_data(mut serial_port_data: ResMut<SerialPortData>, mut data: ResM
             return;
         }
     };
-    println!("a {:?}", buffer);
-    println!("b {:?}", serial_port_data.binary_serial_handler);
     let in_data = match serial_port_data
         .binary_serial_handler
         .read::<DataTypes>(buffer)
@@ -73,16 +72,19 @@ fn init_serial_port(
     mut message: MessageReader<InitSerialPortMessage>,
 ) {
     for msg in message.read() {
+        serialport.binary_serial_handler = communication::Serial::default();
         serialport.serialport = match serialport::new(msg.path.clone(), msg.baudrate)
             .timeout(Duration::from_millis(10))
             .open_native()
         {
-            Ok(port) => Some(port),
+            Ok(mut port) => {
+                port.write_request_to_send(false).unwrap();
+                Some(port)
+            }
             Err(error) => {
                 error!("Error opening serialport: {}", error);
                 None
             }
         };
-        serialport.binary_serial_handler = communication::Serial::default();
     }
 }
