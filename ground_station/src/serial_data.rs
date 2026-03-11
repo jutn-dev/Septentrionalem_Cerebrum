@@ -40,25 +40,32 @@ fn read_serial_data(mut serial_port_data: ResMut<SerialPortData>, mut data: ResM
     let Some(serial_port) = &mut serial_port_data.serialport else {
         return;
     };
+    //TODO choose better size for buffer
     let mut buffer  = vec![0;255];
 
-    let number = match serial_port.read(buffer.as_mut_slice()) {
-        Ok(num) => num,
+    let buffer_lenght = match serial_port.read(buffer.as_mut_slice()) {
+        Ok(len) => len,
+        Err(e) if e.kind() == std::io::ErrorKind::TimedOut => return,
         Err(error) => {
             error!("Serialport failed to read: {}", error);
             return;
         }
     };
+
+    println!("buffer: {:?}", buffer);
     let Some(incoming_data) = serial_port_data.binary_serial_handler
-        .read::<DataTypes>(buffer)
+        .read::<DataTypes>(buffer[..buffer_lenght].to_vec())
     else {return;};
     for data_point in incoming_data {
         match data_point {
-        Ok(ok_data) => data.extend(&ok_data),
+        Ok(ok_data) => {
+            println!("{:?}", ok_data);
+            data.extend(&ok_data)
+        }
         Err(error) => {
             // TODO better error
             error!("Packet failed to read {:?}", error);
-            info!("errored packet data: {:?}", serial_port_data);
+//            info!("errored packet data: {:?}", serial_port_data);
             return;
         }}
     };
