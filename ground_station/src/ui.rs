@@ -45,10 +45,16 @@ struct LoadDataFile {
     mode: LoadDataMode,
 }
 
-#[derive(Debug, Clone, Resource, Default)]
+#[derive(Debug, Clone, Resource,)]
 struct LoadDataSerial {
     path: String,
     baudrate: u32,
+}
+impl Default for LoadDataSerial {
+    fn default() -> Self {
+        Self { path: String::default(), baudrate: 9600 }
+    }
+    
 }
 
 fn data_ui(
@@ -76,7 +82,9 @@ fn data_ui(
                 }
             }
             LoadDataMode::Serial => {
-                ComboBox::from_label("serial port").show_ui(ui, |ui| {
+                ComboBox::from_label("serial port")
+                    .selected_text(&load_serial.path)
+                    .show_ui(ui, |ui| {
                     let ports = serialport::available_ports().unwrap();
                     for port in ports {
                         ui.selectable_value(
