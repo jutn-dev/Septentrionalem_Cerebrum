@@ -97,9 +97,8 @@ impl Data {
             .min_by_key(|d| d.time.abs_diff(time))
     }
 
-    pub fn extend(&mut self, data_types: Vec<DataTypes>) {
-        let data_points: Vec<DataPoint> = data_types.iter().map(|d| DataPoint::from_data_types(d)).collect();
-        self.data_points.extend(data_points);
+    pub fn extend(&mut self, data_types: &DataTypes) {
+        self.data_points.push(DataPoint::from_data_types(data_types));
     }
 }
 

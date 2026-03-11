@@ -2,7 +2,7 @@ use std::{io::Read, time::Duration};
 
 use crate::data::Data;
 use bevy::prelude::*;
-use communication::{ReadError, data::DataTypes};
+use communication::data::DataTypes;
 use serialport::SerialPort;
 #[cfg(unix)]
 use serialport::TTYPort;
@@ -40,7 +40,7 @@ fn read_serial_data(mut serial_port_data: ResMut<SerialPortData>, mut data: ResM
     let Some(serial_port) = &mut serial_port_data.serialport else {
         return;
     };
-    let mut buffer  = vec![0; 1];
+    let mut buffer  = vec![0;255];
 
     let number = match serial_port.read(buffer.as_mut_slice()) {
         Ok(num) => num,
@@ -49,22 +49,19 @@ fn read_serial_data(mut serial_port_data: ResMut<SerialPortData>, mut data: ResM
             return;
         }
     };
-    let in_data = match serial_port_data
-        .binary_serial_handler
+    let Some(incoming_data) = serial_port_data.binary_serial_handler
         .read::<DataTypes>(buffer)
-    {
-        Ok(in_data) => in_data,
+    else {return;};
+    for data_point in incoming_data {
+        match data_point {
+        Ok(ok_data) => data.extend(&ok_data),
         Err(error) => {
-            if error == ReadError::NoCompletePacket {
-                return;
-            }
             // TODO better error
             error!("Packet failed to read {:?}", error);
+            info!("errored packet data: {:?}", serial_port_data);
             return;
-        }
+        }}
     };
-    info!("indata: {:?}", in_data);
-    data.extend(in_data);
 }
 
 fn init_serial_port(

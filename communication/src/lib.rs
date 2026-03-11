@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use postcard::Error;
+use serde::{Deserialize, Serialize,};
 
 
 #[allow(unused)]
@@ -53,25 +54,13 @@ const HEADER: u8 = 0x06;
 const END: u8 = 0xFF;
 const CTRL_BYTE: u8 = 0x0A;
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub enum ReadError {
-    NoCompletePacket,
-    PostcardError(postcard::Error),
-}
-
-impl From<postcard::Error> for ReadError {
-    fn from(value: postcard::Error) -> Self {
-        ReadError::PostcardError(value)
-    }
-}
-
 #[allow(dead_code)]
 impl Serial {
     /// returns `None` if no comlete packet is read or `Vec<T>` if packets are recieved
     pub fn read<T: for<'a> Deserialize<'a>>(
         &mut self,
         input_buffer: Vec<u8>,
-    ) -> Result<Vec<T>, ReadError> {
+    ) -> Option<Vec<Result<T, Error>>> {
         let mut complete_packets = vec![];
         for byte in input_buffer {
             if byte == CTRL_BYTE && !self.ctrl_byte_last {
@@ -93,15 +82,15 @@ impl Serial {
                 continue;
             }
 
-            complete_packets.push(postcard::from_bytes(&self.current_data)?);
+            complete_packets.push(postcard::from_bytes::<T>(&self.current_data));
             self.reading_data = false;
             self.ctrl_byte_last = false;
             self.current_data.clear();
         }
         if complete_packets.is_empty() {
-            return Err(ReadError::NoCompletePacket);
+            return None; 
         }
-        Ok(complete_packets)
+        Some(complete_packets)
     }
 
     pub fn to_message<T: Serialize>(&self, data: T) -> Result<Vec<u8>, postcard::Error> {
