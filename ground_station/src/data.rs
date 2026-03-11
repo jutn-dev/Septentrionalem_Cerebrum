@@ -1,7 +1,8 @@
-use std::{fs::File, io::BufReader};
+use std::{collections::BTreeSet, fs::File, io::BufReader};
 
 use bevy::prelude::*;
 use communication::data::DataTypes;
+use egui_plot::PlotPoints;
 use proj::Proj;
 use serde::{Deserialize, Serialize};
 
@@ -17,8 +18,9 @@ pub struct Position {
 ///Data from CanSat
 pub struct Data {
     //data points are expected to be in chronological order.
+    //      TODO REMOVE THIS COMMENT AS THE DATA TYPE SHOULD ENFORCE THIS SATATEMENT
     //If not you might get some unexpected results.
-    pub data_points: Vec<DataPoint>,
+    pub data_points: BTreeSet<DataPoint>,
     pub current_time: u64,
     center_position: Vec3,
 }
@@ -53,7 +55,7 @@ impl Data {
                 return Ok(Data {
                     center_position: Data::get_center_position(&data),
                     current_time: 0,
-                    data_points: data,
+                    data_points: data.into_iter().collect(),
                 });
             }
             Err(error) => {
@@ -62,6 +64,7 @@ impl Data {
             }
         }
     }
+    
     // vec should be sorted when using this function
     // if no coordinates found returns Vec3::Zero
     fn get_center_position(datapoints: &Vec<DataPoint>) -> Vec3 {
@@ -87,7 +90,11 @@ impl Data {
             return None;
         }
 
-        let relative_time = self.data_points[0].time - data_point.time;
+        let Some(some_data_point) = self.data_points.first() else {
+            return None;
+        };
+
+        let relative_time = some_data_point.time - data_point.time;
         Some(relative_time)
     }
 
@@ -98,9 +105,10 @@ impl Data {
     }
 
     pub fn extend(&mut self, data_types: &DataTypes) {
-        self.data_points.push(DataPoint::from_data_types(data_types));
+        self.data_points.insert(DataPoint::from_data_types(data_types));
     }
 }
+
 
 impl DataPoint {
     //get position from Coordinate.
