@@ -2000,6 +2000,8 @@ dependencies = [
 name = "communication"
 version = "0.1.0"
 dependencies = [
+ "bevy_math",
+ "bevy_reflect",
  "glam 0.32.0",
  "postcard",
  "serde",

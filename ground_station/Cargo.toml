@@ -6,7 +6,7 @@ edition = "2024"
 
 
 [dependencies]
-communication = {path = "../communication/"}
+communication = {path = "../communication/", features = ["bevy"]}
 
 bevy = {version = "0.18", features = ["dynamic_linking", "wayland"]}
 bevy-inspector-egui = "0.36"

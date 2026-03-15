@@ -4,30 +4,65 @@ use serde::{Deserialize, Serialize,};
 
 #[allow(unused)]
 pub mod data {
+    #[cfg(feature = "bevy")]
+    use bevy_reflect::Reflect;
+    #[cfg(feature = "bevy")]
+    use bevy_reflect::impl_reflect;
+    #[cfg(feature = "bevy")]
+    use bevy_math::Vec3;
+    #[cfg(not(feature = "bevy"))]
     use glam::Vec3;
     use serde::{Deserialize, Serialize};
+    
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[cfg_attr(feature = "bevy", derive(Reflect))]
+    pub struct Message {
+        pub time: u64,
+        pub data: DataTypes,
+    }
+    impl Message {
+        pub fn new(time: u64, data: DataTypes) -> Self {
+            Self { time, data  }
+        }
+        
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[cfg_attr(feature = "bevy", derive(Reflect))]
     pub enum DataTypes {
-        Pressure(PressureData),
+        PressureSensor(PressureSensorData),
+        CO2Sensor(CO2SensorData),
+        
         //FullTemp(PressureData),
         //Gyroscope(GyroscopeData)
     }
-
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct PressureData {
-        pub time: u64,
-        pub pressure: f32, 
+    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[cfg_attr(feature = "bevy", derive(Reflect))]
+    pub struct PressureSensorData {
+        pub pressure: f32,
+        pub temp: f32,
     }
 
-    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[cfg_attr(feature = "bevy", derive(Reflect))]
+    pub struct CO2SensorData {
+        pub co2: u16,
+        pub temp: f32,
+        pub humidity: f32,
+    }
+
+
+    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[cfg_attr(feature = "bevy", derive(Reflect))]
     pub struct FullTempData {
         pub time: u64,
         pub temp_pressure: f32, 
         pub temp_gyro: f32, 
     }
 
-    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[cfg_attr(feature = "bevy", derive(Reflect))]
     pub struct GyroscopeData {
         gyro: Vec3,
     }

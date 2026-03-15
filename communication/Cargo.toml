@@ -7,3 +7,9 @@ edition = "2024"
 serde = { version = "1.0", features = ["derive"]}
 postcard = {version = "1.1", features = ["alloc"]}
 glam = { version = "0.32", features = ["serde"]}
+bevy_math = { version = "0.18", optional = true, features = ["serialize", "bevy_reflect"]}
+bevy_reflect = {version = "0.18", optional = true}
+
+[features]
+default = []
+bevy = ["dep:bevy_reflect", "dep:bevy_math"]

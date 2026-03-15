@@ -1,7 +1,9 @@
+use std::fmt::Debug;
 use std::ops::RangeInclusive;
 
 use bevy::math::f64;
 use bevy::prelude::*;
+use bevy::reflect::DynamicTyped;
 use bevy_inspector_egui::bevy_egui::EguiContexts;
 use bevy_inspector_egui::bevy_egui::EguiPrimaryContextPass;
 use bevy_inspector_egui::egui;
@@ -19,6 +21,7 @@ use egui_plot::{
 };
 
 use crate::data::Data;
+use crate::data::DataPoint;
 use crate::serial_data::InitSerialPortMessage;
 
 pub struct CanSatUIPlugin;
@@ -27,7 +30,7 @@ impl Plugin for CanSatUIPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LoadDataFile>()
             .init_resource::<LoadDataSerial>()
-            .add_systems(EguiPrimaryContextPass, (data_ui, time_line_ui, graph_ui));
+            .add_systems(EguiPrimaryContextPass, (data_ui, graph_ui, time_line_ui));
     }
 }
 
@@ -45,16 +48,18 @@ struct LoadDataFile {
     mode: LoadDataMode,
 }
 
-#[derive(Debug, Clone, Resource,)]
+#[derive(Debug, Clone, Resource)]
 struct LoadDataSerial {
     path: String,
     baudrate: u32,
 }
 impl Default for LoadDataSerial {
     fn default() -> Self {
-        Self { path: String::default(), baudrate: 9600 }
+        Self {
+            path: String::default(),
+            baudrate: 9600,
+        }
     }
-    
 }
 
 fn data_ui(
@@ -62,7 +67,7 @@ fn data_ui(
     mut data: ResMut<Data>,
     mut load_data: ResMut<LoadDataFile>,
     mut load_serial: ResMut<LoadDataSerial>,
-    mut init_serial_message: MessageWriter<InitSerialPortMessage>
+    mut init_serial_message: MessageWriter<InitSerialPortMessage>,
 ) {
     egui::Window::new("Load Data").show(context.ctx_mut().unwrap(), |ui| {
         ui.horizontal(|ui| {
@@ -85,14 +90,15 @@ fn data_ui(
                 ComboBox::from_label("serial port")
                     .selected_text(&load_serial.path)
                     .show_ui(ui, |ui| {
-                    let ports = serialport::available_ports().unwrap();
-                    for port in ports {
-                        ui.selectable_value(
-                            &mut load_serial.path,
-                            port.port_name.clone(),
-                            port.port_name,
-                        );
-                    }});
+                        let ports = serialport::available_ports().unwrap();
+                        for port in ports {
+                            ui.selectable_value(
+                                &mut load_serial.path,
+                                port.port_name.clone(),
+                                port.port_name,
+                            );
+                        }
+                    });
                 ui.add(DragValue::new(&mut load_serial.baudrate));
                 if ui.button("Open").clicked() {
                     init_serial_message.write(InitSerialPortMessage {
@@ -100,7 +106,6 @@ fn data_ui(
                         baudrate: load_serial.baudrate,
                     });
                 }
-
             }
             LoadDataMode::Udp => (),
         }
@@ -180,72 +185,84 @@ fn time_line_ui(mut context: EguiContexts, mut data: ResMut<Data>) {
 }
 
 fn graph_ui(mut context: EguiContexts, data: ResMut<Data>) {
-    egui::Window::new("Graph").show(context.ctx_mut().unwrap(), |ui| {
-        let Some(current_data) = data.get_closest_point_in_time(data.current_time) else {
-            ui.label("no data points found");
-            return;
-        };
-        //TODO
-        /*
-        ui.horizontal(|ui| {
-            ui.label(format!("lon: {}", current_data.lon));
-            ui.label(format!("lat: {}", current_data.lat));
-            ui.label(format!("({})", current_data.position));
-        });
-        */
+    egui::SidePanel::left("Graph")
+        .resizable(true)
+        .min_width(0.0)
+        .show(context.ctx_mut().unwrap(), |ui| {
+            ui.take_available_width();
+            let Some(data_point) = data.get_closest_point_in_time(data.current_time) else {
+                ui.label("no data points found");
+                return;
+            };
+            for (i, _) in data_point.iter_fields().enumerate() {
 
-        let points: Vec<[f64; 2]> = data
-            .data_points
-            .iter()
-            .filter_map(|d| {
-                if let Some(pressure) = d.air_pressure {
-                    Some([d.time as f64, pressure as f64])
-                } else {
-                    None
-                }
-            })
-            //.map(|a| [a.time as f64, a.air_pressure])
-            .collect();
-        let _spaces = |input: GridInput| {
-            let (min, max) = input.bounds;
-            let min = min.floor() as i64;
-            let max = max.ceil() as i64;
-            let range = (min..max).filter(|x| x % input.base_step_size.ceil() as i64 == 0);
-            //            marks.reserve(range.clone().count());
-            //
-
-            //let mut marks = Vec::with_capacity(range.clone().count());
-            let mut marks = vec![];
-            for i in range {
-                let _step_size = if i % 10 == 0 {
-                    10.
-                } else {
-                    continue;
-                };
-                marks.push(GridMark {
-                    value: i as f64,
-                    step_size: 10.,
-                });
+                ui.add(Button::selectable(
+                    true,
+                    format!("{:?}, {:?}", data_point.name_at(i), data_point.field_at(i).unwrap()) 
+                ));
             }
-            marks
-        };
-        let x_axis = vec![AxisHints::new_x()
-            .label("Time")
-            .formatter(x_axis_time_formatter)];
-        Plot::new("Graph")
-            .legend(Legend::default())
-            .custom_x_axes(x_axis)
-            .x_grid_spacer(log_grid_spacer(10))
-            .coordinates_formatter(
-                egui_plot::Corner::LeftTop,
-                CoordinatesFormatter::new(coordinates_formatter),
-            )
-            .show(ui, |plot_ui| {
-                plot_ui.points(Points::new("air pressure", points.clone()));
-                plot_ui.line(Line::new("air pressure", points.clone()));
-                plot_ui.vline(VLine::new("", data.current_time as f64).color(Color32::RED));
+
+            //TODO
+            /*
+            ui.horizontal(|ui| {
+                ui.label(format!("lon: {}", current_data.lon));
+                ui.label(format!("lat: {}", current_data.lat));
+                ui.label(format!("({})", current_data.position));
             });
-    });
+            */
+
+            let points: Vec<[f64; 2]> = data
+                .data_points
+                .iter()
+                .filter_map(|d| {
+                    if let Some(pressure) = &d.pressure_data {
+                        Some([d.time as f64, pressure.pressure as f64])
+                    } else {
+                        None
+                    }
+                })
+                //.map(|a| [a.time as f64, a.air_pressure])
+                .collect();
+            let _spaces = |input: GridInput| {
+                let (min, max) = input.bounds;
+                let min = min.floor() as i64;
+                let max = max.ceil() as i64;
+                let range = (min..max).filter(|x| x % input.base_step_size.ceil() as i64 == 0);
+                //            marks.reserve(range.clone().count());
+                //
+
+                //let mut marks = Vec::with_capacity(range.clone().count());
+                let mut marks = vec![];
+                for i in range {
+                    let _step_size = if i % 10 == 0 {
+                        10.
+                    } else {
+                        continue;
+                    };
+                    marks.push(GridMark {
+                        value: i as f64,
+                        step_size: 10.,
+                    });
+                }
+                marks
+            };
+            let x_axis = vec![AxisHints::new_x()
+                .label("Time")
+                .formatter(x_axis_time_formatter)];
+            Plot::new("Graph")
+                .legend(Legend::default())
+                .custom_x_axes(x_axis)
+                .x_grid_spacer(log_grid_spacer(10))
+                .coordinates_formatter(
+                    egui_plot::Corner::LeftTop,
+                    CoordinatesFormatter::new(coordinates_formatter),
+                )
+                .show(ui, |plot_ui| {
+                    plot_ui.points(Points::new("air pressure", points.clone()));
+                    plot_ui.line(Line::new("air pressure", points.clone()));
+                    plot_ui.vline(VLine::new("", data.current_time as f64).color(Color32::RED));
+                });
+        });
 }
 
 fn x_axis_time_formatter(mark: GridMark, _range: &RangeInclusive<f64>) -> String {

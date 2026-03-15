@@ -1,12 +1,12 @@
-use std::{collections::BTreeSet, fs::File, io::BufReader};
+use std::{collections::{BTreeMap, BTreeSet}, fs::File, io::BufReader};
 
 use bevy::prelude::*;
-use communication::data::DataTypes;
+use communication::data::{CO2SensorData, DataTypes, PressureSensorData};
 use egui_plot::PlotPoints;
 use proj::Proj;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Reflect)]
 pub struct Position {
     pub lon: f32,
     pub lat: f32,
@@ -14,7 +14,7 @@ pub struct Position {
     pub position: Vec3,
 }
 
-#[derive(Debug, Clone, Default, Resource)]
+#[derive(Debug, Clone, Default, Resource, Reflect)]
 ///Data from CanSat
 pub struct Data {
     //data points are expected to be in chronological order.
@@ -30,14 +30,12 @@ pub struct Data {
 ///why is there two `DataPoint` sturcts?
 ///I want to be able to use rust's type safty to ensure that variables
 ///which get computed on the groundstation such as `position` get initalized properly.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Reflect)]
 pub struct DataPoint {
     pub time: u64,
-    pub temp: Option<f32>,
     pub position: Option<Position>,
-    pub air_pressure: Option<f32>,
-    pub gyroscope: Option<Vec3>,
-    pub acceleration: Option<Vec3>,
+    pub pressure_data: Option<PressureSensorData>,
+    pub co2_data: Option<CO2SensorData>,
 }
 
 #[allow(unused)]
@@ -104,8 +102,8 @@ impl Data {
             .min_by_key(|d| d.time.abs_diff(time))
     }
 
-    pub fn extend(&mut self, data_types: &DataTypes) {
-        self.data_points.insert(DataPoint::from_data_types(data_types));
+    pub fn extend(&mut self, message: &communication::data::Message) {
+        self.data_points.insert(DataPoint::from_message(message));
     }
 }
 
@@ -123,18 +121,19 @@ impl DataPoint {
             .unwrap();
         Vec3::new(coordinate.0, 0., coordinate.1)
     }
-    pub fn from_data_types(data_types: &DataTypes) -> Self {
-        match data_types {
-            DataTypes::Pressure(pressure_data) => Self {
-                time: pressure_data.time,
-                temp: None,
-                position: None,
-                air_pressure: Some(pressure_data.pressure),
-                gyroscope: None,
-                acceleration: None,
+    pub fn from_message(message: &communication::data::Message) -> Self {
+        match message.data.clone() {
+            DataTypes::PressureSensor(pressure_data) => Self {
+                time: message.time,
+                pressure_data: Some(pressure_data),
+                ..default()
             },
-        }
-    }
+            DataTypes::CO2Sensor(co2_data) => Self {
+                time: message.time,
+                co2_data: Some(co2_data),
+                ..default()
+            }, 
+    }}
 }
 
 impl Ord for DataPoint {

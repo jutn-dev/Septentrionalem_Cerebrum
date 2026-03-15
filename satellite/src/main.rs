@@ -1,14 +1,20 @@
+use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
+
+use communication::data::{DataTypes, Message};
 use communication::Serial;
-use communication::data::DataTypes;
 use esp_idf_svc::hal;
-use esp_idf_svc::hal::delay::BLOCK;
+use esp_idf_svc::hal::delay::{FreeRtos, BLOCK};
 use esp_idf_svc::hal::gpio::AnyIOPin;
+use esp_idf_svc::hal::i2c::I2cDriver;
+use esp_idf_svc::hal::units::Hertz;
 use esp_idf_svc::{hal::gpio::Pin, sys::EspError};
 
-use crate::pressure_sensor::{PressureSensor,};
+use crate::pressure_sensor::PressureSensor;
+use crate::scd41::SCD41;
 
 mod pressure_sensor;
-
+mod scd41;
 
 fn main() -> Result<(), EspError> {
     // It is necessary to call this function once. Otherwise, some patches to the runtime
@@ -24,7 +30,6 @@ fn main() -> Result<(), EspError> {
     let scl = peripherals.pins.gpio22;
     let i2c = peripherals.i2c0;
 
-
     let uart_config = hal::uart::config::Config::new().baudrate(hal::units::Hertz(9_600));
     let uart2 = esp_idf_svc::hal::uart::UartDriver::new(
         peripherals.uart2,
@@ -36,26 +41,71 @@ fn main() -> Result<(), EspError> {
     )?;
     let delay = esp_idf_svc::hal::delay::Delay::new_default();
 
+    let i2c_config = hal::i2c::config::Config::new(); //.tx_buffer_length(128).rx_buffer_length(128);
+    let mut i2c_driver = Arc::new(Mutex::new(hal::i2c::I2cDriver::new(
+        i2c,
+        sda,
+        scl,
+        &i2c_config,
+    )?));
+    
+    let mut time = 0;
 
-    let baro_config = hal::i2c::config::Config::new(); //.tx_buffer_length(128).rx_buffer_length(128);
-    let mut baro = hal::i2c::I2cDriver::new(i2c, sda, scl, &baro_config)?;
-    let mut pressure_sesnor = PressureSensor::init(baro)?;
+    
+    let (tx, rx) = std::sync::mpsc::channel();
+    let i2c_driver_clone = Arc::clone(&i2c_driver);
+    let tx_clone = tx.clone();
+    std::thread::spawn(move || {
+        pressure_sensor_thread(i2c_driver_clone, tx_clone).unwrap();
+    });
+    let i2c_driver_clone = Arc::clone(&i2c_driver);
+    std::thread::spawn(move || {
+        co2_thread(i2c_driver_clone, tx).unwrap();
+    });
 
     let bin_serial = Serial::default();
-
-    let mut time = 0;
     loop {
-        time += 1;
         delay.delay_ms(100);
-        //        uart2.write(&[255])?;
-        //let size = uart2.read(&mut buf, BLOCK)?;
-        log::info!("Temp: {:?}",pressure_sesnor.read_temp()?);
-        let pressure = pressure_sesnor.read_pressure()?;
-        log::info!("Pressure: {:?}", pressure);
-        let data_type = DataTypes::Pressure(communication::data::PressureData { time: time, pressure });
-        let data = bin_serial.to_message(data_type).unwrap();
-        //log::info!("D: {:?}", data.as_slice());
-        uart2.write(data.as_slice());
+        //let mut buf = [0; 255];
+        //uart2.read(&mut buf, BLOCK);
+        time += 1;
+        for data_type in rx.try_iter() {
+            let message = Message::new(time, data_type);
+            let data = bin_serial.to_message(message).unwrap();
+            uart2.write(data.as_slice())?;
+        }
     }
 }
 
+fn pressure_sensor_thread(i2c: Arc<Mutex<I2cDriver>>, tx: Sender<DataTypes>)-> Result<(), EspError> {
+
+    let mut i2c_driver = i2c.lock().unwrap();
+    let pressure_sesnor = PressureSensor::init(&mut i2c_driver)?;
+    drop(i2c_driver);
+    loop {
+        FreeRtos::delay_ms(1000);
+        let mut i2c_driver = i2c.lock().unwrap();
+        
+        let temp = pressure_sesnor.read_temp(&mut i2c_driver)?;
+        let pressure = pressure_sesnor.read_pressure(&mut i2c_driver)?;
+        drop(i2c_driver);
+        let data_type = DataTypes::PressureSensor(communication::data::PressureSensorData {
+            temp,
+            pressure,
+        });
+        tx.send(data_type).unwrap();
+    }
+}
+
+fn co2_thread(i2c: Arc<Mutex<I2cDriver>>, tx: Sender<DataTypes>) -> Result<(), EspError> {
+    let mut i2c_driver = i2c.lock().unwrap();
+    let c02_sensor = SCD41::init_measurements(&mut i2c_driver)?;
+    drop(i2c_driver);
+    loop {
+        FreeRtos::delay_ms(5000);
+        let mut i2c_driver = i2c.lock().unwrap();
+        let data = c02_sensor.read(&mut i2c_driver)?;
+        let data_type = DataTypes::CO2Sensor(data);
+        tx.send(data_type).unwrap();
+    }
+}

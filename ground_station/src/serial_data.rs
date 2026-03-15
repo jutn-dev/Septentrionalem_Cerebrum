@@ -54,7 +54,7 @@ fn read_serial_data(mut serial_port_data: ResMut<SerialPortData>, mut data: ResM
 
     println!("buffer: {:?}", buffer);
     let Some(incoming_data) = serial_port_data.binary_serial_handler
-        .read::<DataTypes>(buffer[..buffer_lenght].to_vec())
+        .read::<communication::data::Message>(buffer[..buffer_lenght].to_vec())
     else {return;};
     for data_point in incoming_data {
         match data_point {
