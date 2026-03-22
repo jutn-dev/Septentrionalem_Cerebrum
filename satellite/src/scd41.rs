@@ -1,5 +1,5 @@
 use communication::data::CO2SensorData;
-use esp_idf_svc::{hal::{delay::{BLOCK, Delay, FreeRtos}, i2c::I2cDriver}, sys::EspError};
+use esp_idf_svc::{hal::{delay::{BLOCK, FreeRtos}, i2c::I2cDriver}, sys::EspError};
 
 
 const SCD41_I2C_ADDRESS:u8 = 0x62;

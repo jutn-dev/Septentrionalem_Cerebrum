@@ -33,6 +33,7 @@ pub mod data {
     pub enum DataTypes {
         PressureSensor(PressureSensorData),
         CO2Sensor(CO2SensorData),
+        GPS(GPSData),
         
         //FullTemp(PressureData),
         //Gyroscope(GyroscopeData)
@@ -55,10 +56,15 @@ pub mod data {
 
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     #[cfg_attr(feature = "bevy", derive(Reflect))]
-    pub struct FullTempData {
-        pub time: u64,
-        pub temp_pressure: f32, 
-        pub temp_gyro: f32, 
+    pub struct GPSData {
+       pub lat: f32,
+       pub lon: f32,
+       //true is North
+       pub n_or_s: bool,
+       //true is West
+       pub w_or_e: bool,
+       pub satellites_used: u8,
+       pub altitude: f32,
     }
 
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]

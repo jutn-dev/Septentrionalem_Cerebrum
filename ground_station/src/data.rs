@@ -1,15 +1,14 @@
-use std::{collections::{BTreeMap, BTreeSet}, fs::File, io::BufReader};
+use std::{collections::{BTreeMap, BTreeSet}, fs::File, io::{BufReader, Write}};
 
-use bevy::prelude::*;
-use communication::data::{CO2SensorData, DataTypes, PressureSensorData};
+use bevy::{math::VectorSpace, prelude::*};
+use communication::data::{CO2SensorData, DataTypes, GPSData, PressureSensorData};
 use egui_plot::PlotPoints;
 use proj::Proj;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Reflect)]
 pub struct Position {
-    pub lon: f32,
-    pub lat: f32,
+    pub gps_data: GPSData,
     // 3d position to be used in the engine
     pub position: Vec3,
 }
@@ -62,6 +61,11 @@ impl Data {
             }
         }
     }
+    pub fn write_json_to_file(&self, path: String) {
+        let json_string = serde_json::to_string(&self.data_points).unwrap();
+        let mut file = File::create(path).unwrap();
+        write!(file,"{}", json_string);
+    }
     
     // vec should be sorted when using this function
     // if no coordinates found returns Vec3::Zero
@@ -111,15 +115,17 @@ impl Data {
 impl DataPoint {
     //get position from Coordinate.
     //this function should only be used when creating DataPoint
-    fn get_position(in_data: &Position) -> Vec3 {
+    fn get_position(gps_data: &GPSData) -> Vec3 {
         let from = "EPSG:4326";
         let to = "EPSG:3857";
         let wsg84_to_epsg3857 = Proj::new_known_crs(from, to, None).unwrap();
 
+        //warn!("THIS FUNCTION DOES NOT OPERATE HOW IT IS SUPPOST TO");
         let coordinate = wsg84_to_epsg3857
-            .convert((in_data.lon, in_data.lat))
+            .convert((gps_data.lon, gps_data.lat))
             .unwrap();
         Vec3::new(coordinate.0, 0., coordinate.1)
+        //Vec3::ZERO
     }
     pub fn from_message(message: &communication::data::Message) -> Self {
         match message.data.clone() {
@@ -132,7 +138,15 @@ impl DataPoint {
                 time: message.time,
                 co2_data: Some(co2_data),
                 ..default()
-            }, 
+            },
+            DataTypes::GPS(gps_data) => Self {
+                time: message.time,
+                position: Some(Position {
+                    position: Self::get_position(&gps_data),
+                    gps_data,
+                }),
+                ..default()
+            }
     }}
 }
 
