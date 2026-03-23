@@ -7,7 +7,9 @@ use esp_idf_svc::hal;
 use esp_idf_svc::hal::delay::{FreeRtos, BLOCK};
 use esp_idf_svc::hal::gpio::{AnyIOPin, PinDriver};
 use esp_idf_svc::hal::i2c::I2cDriver;
-use esp_idf_svc::hal::units::Hertz;
+use esp_idf_svc::hal::ledc::config::TimerConfig;
+use esp_idf_svc::hal::ledc::{LedcDriver, LedcTimerDriver};
+use esp_idf_svc::hal::units::{Frequency, Hertz};
 use esp_idf_svc::{hal::gpio::Pin, sys::EspError};
 
 use crate::gps::GPSDriver;
@@ -87,9 +89,21 @@ fn main() -> Result<(), EspError> {
         return Ok(());
     */
     println!("WHAAAAT");
+
+    let timer_driver = LedcTimerDriver::new(peripherals.ledc.timer0, &TimerConfig::new().frequency(Hertz(50)))?;
+    let mut servo = LedcDriver::new(peripherals.ledc.channel0, timer_driver, peripherals.pins.gpio27)?;
+    let max_duty = servo.get_max_duty();
+
     let bin_serial = Serial::default();
     loop {
-        delay.delay_ms(10);
+        println!("max: {:?}", max_duty);
+        //servo.set_duty(max_duty * 1/100)?;
+        servo.set_duty(26)?;
+        delay.delay_ms(2000);
+        servo.set_duty(26)?;
+        delay.delay_ms(2000);
+        servo.set_duty(12)?;
+        delay.delay_ms(2000);
         //let mut buf = [0; 255];
         //uart2.read(&mut buf, BLOCK);
         time += 1;
