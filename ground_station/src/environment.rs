@@ -37,12 +37,12 @@ fn setup(
 }
 
 fn update_cansat_model(mut model: Single<&mut Transform, With<CanSatModel>>, data: Res<Data>) {
-    let Some(current_data) = data.get_closest_point_in_time(data.current_time) else {
+    /*let Some(current_data) = data.get_closest_point_in_time(data.current_time) else {
         return;
     };
-    if let Some(position) = data.get_point_relative_position(current_data) {
-        model.translation = position;
-    }
+    let position = data.get_point_relative_position(current_data);
+    model.translation = position;
+    */
 }
 
 fn update_gizmos(mut gizmos: Gizmos<Gizmos3D>, data: Res<Data>) {
@@ -55,10 +55,8 @@ fn update_gizmos(mut gizmos: Gizmos<Gizmos3D>, data: Res<Data>) {
     );
 
     let mut coordinates = vec![];
-    for data_point in data.data_points.iter() {
-        if let Some(position) = data.get_point_relative_position(data_point) {
-            coordinates.push(position);
-        }
+    for (_time, position) in data.data_points.position.iter() {
+            coordinates.push(data.get_point_relative_position(position));
     }
 
     gizmos.linestrip(coordinates, Color::WHITE);
