@@ -1,20 +1,24 @@
 use std::any::Any;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::RangeInclusive;
 
 use bevy::math::f64;
 use bevy::prelude::*;
+use bevy::reflect::DynamicTypePath;
 use bevy::reflect::DynamicTyped;
 use bevy::reflect::Map;
 use bevy::reflect::ReflectRef;
 use bevy_inspector_egui::bevy_egui::EguiContexts;
 use bevy_inspector_egui::bevy_egui::EguiPrimaryContextPass;
 use bevy_inspector_egui::egui;
+use bevy_inspector_egui::egui::epaint::tessellator::path;
 use bevy_inspector_egui::egui::Button;
 use bevy_inspector_egui::egui::Color32;
 use bevy_inspector_egui::egui::ComboBox;
 use bevy_inspector_egui::egui::DragValue;
 use bevy_inspector_egui::egui::TextEdit;
+use bevy_inspector_egui::egui::Ui;
 use bevy_inspector_egui::egui::Vec2b;
 use chrono::DateTime;
 use chrono::Timelike;
@@ -35,6 +39,7 @@ impl Plugin for CanSatUIPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LoadDataFile>()
             .init_resource::<LoadDataSerial>()
+            .init_resource::<GraphResource>()
             .add_systems(EguiPrimaryContextPass, (data_ui, graph_ui, time_line_ui));
     }
 }
@@ -45,6 +50,11 @@ enum LoadDataMode {
     File,
     Serial,
     Udp,
+}
+
+#[derive(Debug, Clone, Resource, Default)]
+struct GraphResource {
+    buttons_pressed: HashMap<String, bool>,
 }
 
 #[derive(Debug, Clone, Resource, Default)]
@@ -89,6 +99,9 @@ fn data_ui(
                         Ok(result_data) => *data = result_data,
                         Err(e) => error!("{e}"),
                     }
+                }
+                if ui.button("Write").clicked() {
+                    let result = data.write_json_to_file(load_data.path.clone());
                 }
             }
             LoadDataMode::Serial => {
@@ -146,16 +159,14 @@ fn time_line_ui(mut context: EguiContexts, mut data: ResMut<Data>) {
                 //.x_grid_spacer(log_grid_spacer(10))
                 .show(ui, |plot_ui| {
 
-                    /*
-                    plot_ui.points(Points::new("time points", points.clone()).radius(5.));
-                    plot_ui.vline(VLine::new("", data.current_time as f64).color(Color32::RED));
+                    //plot_ui.points(Points::new("time points", points.clone()).radius(5.));
+                    /*plot_ui.vline(VLine::new("", data.current_time as f64).color(Color32::RED));
                     if data_button_clicked {
                         plot_ui.set_plot_bounds_x(
                             //TODO remove unwrap
                             //points.first().unwrap()[0]..=points.last().unwrap()[0],
                         );
-                    }
-                    */
+                        */
                 });
 
             if plot.response.dragged_by(egui::PointerButton::Primary)
@@ -166,42 +177,19 @@ fn time_line_ui(mut context: EguiContexts, mut data: ResMut<Data>) {
                     .value_from_position(plot.response.hover_pos().unwrap());
                 data.current_time = point.x.floor() as u64;
             }
-
-            /*
-            Frame::canvas(ui.style()).show(ui, |ui| {
-                let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::all());
-                let to = RectTransform::from_to(
-                    egui::Rect::from_min_size(Pos2::ZERO, response.rect.size()),
-                    response.rect,
-                );
-
-                let s = Shape::LineSegment {
-                    points: [to * pos2(1., 1.), to * pos2(2000., 2000.)],
-                    stroke: Stroke {
-                        width: 20.,
-                        color: Color32::WHITE,
-                    },
-                };
-
-                painter.add(s.clone());
-                response
-            });
-
-            //ui.add(response);
-            */
         });
 }
 
-fn graph_ui(mut context: EguiContexts, mut data: ResMut<Data>) {
+fn graph_ui(
+    mut context: EguiContexts,
+    mut data: ResMut<Data>,
+    mut graph_res: ResMut<GraphResource>,
+) {
     egui::SidePanel::left("Graph")
         .resizable(true)
         .min_width(0.0)
         .show(context.ctx_mut().unwrap(), |ui| {
             ui.take_available_width();
-            if data.data_points.pressure_data.is_empty() {
-            }
-            if data.data_points.co2_data.is_empty() {
-            }
             /*let Some(data_point) = data.get_closest_point_in_time(data.current_time) else {
                 ui.label("no data points found");
                 return;
@@ -223,7 +211,20 @@ fn graph_ui(mut context: EguiContexts, mut data: ResMut<Data>) {
                 ui.label(format!("({})", current_data.position));
             });
             */
-
+            for field in data.data_points.iter_fields() {
+                let s = field.reflect_ref();
+                match s {
+                    ReflectRef::Map(map) => {
+                        let vec: Vec<(u64, &dyn PartialReflect)> = map
+                            .iter()
+                            .map(|f| (*f.0.try_downcast_ref::<u64>().unwrap(), f.1))
+                            .collect();
+                        graph_buttons_data(vec, None, None, &mut graph_res.buttons_pressed, ui);
+                    }
+                    ReflectRef::Struct(_) => (),
+                    _ => (),
+                }
+            }
             /*
             let points: Vec<[f64; 2]> = data
                 .data_points
@@ -263,6 +264,7 @@ fn graph_ui(mut context: EguiContexts, mut data: ResMut<Data>) {
             let x_axis = vec![AxisHints::new_x()
                 .label("Time")
                 .formatter(x_axis_time_formatter)];
+
             Plot::new("Graph")
                 .legend(Legend::default())
                 .custom_x_axes(x_axis)
@@ -272,34 +274,17 @@ fn graph_ui(mut context: EguiContexts, mut data: ResMut<Data>) {
                     CoordinatesFormatter::new(coordinates_formatter),
                 )
                 .show(ui, |plot_ui| {
-                    for f in data.data_points.iter_fields() {
-                        let s = f.reflect_ref();
-                        //println!("s: {:?}", s.kind());
+                    for field in data.data_points.iter_fields() {
+                        let s = field.reflect_ref();
                         match s {
                             ReflectRef::Map(map) => {
-                                let typee = map.get_represented_map_info().unwrap().value_ty();
-                                //println!("m: {:?}", typee);
-
-                                let vec: Vec<(u64, &dyn PartialReflect)> =
-                                    map.iter().map(|f| (*f.0.try_downcast_ref::<u64>().unwrap(), f.1)).collect();
-                                cool( vec, plot_ui);
-                                //cool(map, first_struct_item, plot_ui);
-
-                                /*
-                                for (i, _) in first_struct_item.iter_fields().enumerate() {
-                                    for (_, map_value) in map.iter() {
-                                        let data_struct =
-                                            map_value.reflect_ref().as_struct().unwrap();
-                                        let data = data_struct.field_at(i).unwrap();
-                                        println!("data: {:?}", data);
-                                        if data.reflect_ref().as_opaque().is_ok() {
-                                            println!("true :D");
-                                        }
-                                    }
-                                }
-                                */
+                                let vec: Vec<(u64, &dyn PartialReflect)> = map
+                                    .iter()
+                                    .map(|f| (*f.0.try_downcast_ref::<u64>().unwrap(), f.1))
+                                    .collect();
+                                graph_from_data(vec, None, plot_ui, &mut graph_res.buttons_pressed);
                             }
-                            ReflectRef::Struct(s) => (),
+                            ReflectRef::Struct(_) => (),
                             _ => (),
                         }
                     }
@@ -309,14 +294,164 @@ fn graph_ui(mut context: EguiContexts, mut data: ResMut<Data>) {
                 });
         });
 }
-fn cool(vec: Vec<(u64, &dyn PartialReflect)>, plot_ui: &mut PlotUi) {
+
+fn graph_buttons_data(
+    vec: Vec<(u64, &dyn PartialReflect)>,
+    path: Option<String>,
+    name: Option<String>,
+    buttons: &mut HashMap<String, bool>,
+    ui: &mut Ui,
+) {
     //println!("ty: {:?}", st.get_represented_struct_info().unwrap().ty());
     //let first_struct_item = st.field_at(0).unwrap().reflect_ref().as_struct().unwrap();
     let Some(vec_first) = vec.first() else {
         return;
     };
     if vec_first.1.reflect_ref().as_opaque().is_ok() {
-        let data: Vec<[f64;2]> = vec
+        let Some(type_name) = name else {
+            error!("no name for data");
+            return;
+        };
+        let Some(type_path) = path else {
+            error!("no path name for data");
+            return;
+        };
+        let button_state = buttons.get(&format!("{}::{}", type_path, type_name));
+        let selected = Some(&true) == button_state;
+        if ui.add(Button::selectable(selected, &type_name)).clicked() {
+            if selected {
+                buttons.insert(format!("{}::{}", type_path, type_name), false);
+            } else {
+                buttons.insert(format!("{}::{}", type_path, type_name), true);
+            }
+        }
+    } else {
+        for (i, _) in vec_first
+            .1
+            .reflect_ref()
+            .as_struct()
+            .unwrap()
+            .iter_fields()
+            .enumerate()
+        {
+            let type_path = format!(
+                "{:?}",
+                vec_first
+                    .1
+                    .reflect_ref()
+                    .as_struct()
+                    .unwrap()
+                    .get_represented_struct_info()
+                    .unwrap()
+                    .ty(),
+            );
+            let type_name = vec_first
+                .1
+                .reflect_ref()
+                .as_struct()
+                .unwrap()
+                .name_at(i)
+                .unwrap()
+                .to_string();
+
+            let v: Vec<(u64, &dyn PartialReflect)> = vec
+                .iter()
+                .map(|f| {
+                    (
+                        f.0,
+                        f.1.reflect_ref().as_struct().unwrap().field_at(i).unwrap(),
+                    )
+                })
+                .collect();
+
+            graph_buttons_data(v, Some(type_path), Some(type_name), buttons, ui);
+        }
+    }
+}
+fn graph_from_data(
+    vec: Vec<(u64, &dyn PartialReflect)>,
+    name: Option<String>,
+    plot_ui: &mut PlotUi,
+    buttons: &mut HashMap<String, bool>,
+) {
+    //println!("ty: {:?}", st.get_represented_struct_info().unwrap().ty());
+    //let first_struct_item = st.field_at(0).unwrap().reflect_ref().as_struct().unwrap();
+    let Some(vec_first) = vec.first() else {
+        return;
+    };
+    if vec_first.1.reflect_ref().as_opaque().is_ok() {
+        let Some(name) = name else {
+            error!("no name for data");
+            return;
+        };
+        if Some(&true) != buttons.get(&name) {
+            return;
+        }
+        let data: Vec<[f64; 2]> = vec
+            .iter()
+            .map(|f| {
+                if let Some(point) = f.1.try_downcast_ref::<f32>() {
+                    return [f.0 as f64, *point as f64];
+                }
+                [f.0 as f64, 0.]
+            })
+            .collect();
+        //println!("v: {:?}", data);
+        plot_ui.line(Line::new(name, data));
+    } else {
+        for (i, _) in vec_first
+            .1
+            .reflect_ref()
+            .as_struct()
+            .unwrap()
+            .iter_fields()
+            .enumerate()
+        {
+            let type_name = format!(
+                "{:?}::{}",
+                vec_first
+                    .1
+                    .reflect_ref()
+                    .as_struct()
+                    .unwrap()
+                    .get_represented_struct_info()
+                    .unwrap()
+                    .ty(),
+                vec_first
+                    .1
+                    .reflect_ref()
+                    .as_struct()
+                    .unwrap()
+                    .name_at(i)
+                    .unwrap()
+            );
+            let v: Vec<(u64, &dyn PartialReflect)> = vec
+                .iter()
+                .map(|f| {
+                    (
+                        f.0,
+                        f.1.reflect_ref().as_struct().unwrap().field_at(i).unwrap(),
+                    )
+                })
+                .collect();
+
+            graph_from_data(v, Some(type_name), plot_ui, buttons);
+        }
+    }
+}
+
+fn timeline_from_data(
+    vec: Vec<(u64, &dyn PartialReflect)>,
+    name: Option<String>,
+    plot_ui: &mut PlotUi,
+) {
+    //println!("ty: {:?}", st.get_represented_struct_info().unwrap().ty());
+    //let first_struct_item = st.field_at(0).unwrap().reflect_ref().as_struct().unwrap();
+    let Some(vec_first) = vec.first() else {
+        return;
+    };
+    if vec_first.1.reflect_ref().as_opaque().is_ok() {
+        let data: Vec<[f64; 2]> = vec
             .iter()
             .map(|f| {
                 if let Some(point) = f.1.try_downcast_ref::<f32>() {
@@ -326,75 +461,53 @@ fn cool(vec: Vec<(u64, &dyn PartialReflect)>, plot_ui: &mut PlotUi) {
             })
             .collect();
         //println!("v: {:?}", data);
-        plot_ui.line(Line::new(vec_first.1.reflect_type_path(), data));
+        let Some(name) = name else {
+            error!("no name for data");
+            return;
+        };
+        plot_ui.points(Points::new(name, data));
     } else {
-        
-
-        for (i, _) in vec_first.1.reflect_ref().as_struct().unwrap().iter_fields().enumerate() {
-            //println!("f: {:?}", vec_first.1.reflect_ref().as_struct().unwrap().get_represented_struct_info().unwrap().ty());
+        for (i, _) in vec_first
+            .1
+            .reflect_ref()
+            .as_struct()
+            .unwrap()
+            .iter_fields()
+            .enumerate()
+        {
+            let type_name = format!(
+                "{:?}::{}",
+                vec_first
+                    .1
+                    .reflect_ref()
+                    .as_struct()
+                    .unwrap()
+                    .get_represented_struct_info()
+                    .unwrap()
+                    .ty(),
+                vec_first
+                    .1
+                    .reflect_ref()
+                    .as_struct()
+                    .unwrap()
+                    .name_at(i)
+                    .unwrap()
+            );
             let v: Vec<(u64, &dyn PartialReflect)> = vec
                 .iter()
-                .map(|f| (f.0, f.1.reflect_ref().as_struct().unwrap().field_at(i).unwrap()))
+                .map(|f| {
+                    (
+                        f.0,
+                        f.1.reflect_ref().as_struct().unwrap().field_at(i).unwrap(),
+                    )
+                })
                 .collect();
-            cool( v, plot_ui);
+
+            timeline_from_data(v, Some(type_name), plot_ui);
         }
-    }
-    /*
-    for (i, st_field) in st.iter().enumerate() {
-        let mut points = vec![];
-        for (j, (map_key, _map_value)) in map.iter().enumerate() {
-            //DIG THE FALUES FROM THE MAP :D
-            //collect inbetween values to vec
-            //let st_field = st.field_at(j).unwrap();
-            println!("st_field: {:?}", st_field);
-            if st_field.reflect_ref().as_opaque().is_ok() {
-                //                println!("stt_fp: {}",st_field.get_represented_type_info().unwrap().as_struct().unwrap());
-                if let Some(point) = st_field.try_downcast_ref::<f32>() {
-                    points.push([
-                        *map_key.try_downcast_ref::<u64>().unwrap() as f64,
-                        *point as f64,
-                    ]);
-                }
-                //println!("true :D");
-            } else {
-                //println!("ty3: {:?}", st_field.reflect_ref().as_struct().unwrap().get_represented_struct_info().unwrap().ty());
-                cool(map, st_field.reflect_ref().as_struct().unwrap(), plot_ui);
-            }
-        }
-        println!("points: {:?}", points);
-        plot_ui.line(Line::new(
-            format!("{}_{}", st.reflect_type_path(), st.name_at(i).unwrap()),
-            points,
-        ));
-    }
-    */
-}
-/*
-fn strrr(s: &dyn PartialReflect) -> Option<&dyn PartialReflect> {
-    match s.reflect_ref() {
-        ReflectRef::Struct(str) => {
-            for (i, _) in str
-                .iter_fields()
-                .next()
-                .unwrap()
-                .1
-                .reflect_ref()
-                .as_struct()
-                .unwrap()
-                .iter_fields()
-                .enumerate()
-            {}
-            if strrr(s).is_none() {
-                return Some(s);
-            }
-        }
-        ReflectRef::Opaque(_) => {
-            return None;
-        }
-        _ => (),
     }
 }
-*/
+
 fn x_axis_time_formatter(mark: GridMark, _range: &RangeInclusive<f64>) -> String {
     time_formatter(mark.value as u64)
 }
