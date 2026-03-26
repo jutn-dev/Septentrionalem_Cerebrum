@@ -1,22 +1,30 @@
+use std::fs::File;
+use std::io::Write;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use communication::data::{DataTypes, Message};
 use communication::Serial;
+use esp_idf_svc::fs::fatfs::Fatfs;
 use esp_idf_svc::hal;
-use esp_idf_svc::hal::delay::{FreeRtos, BLOCK};
+use esp_idf_svc::hal::delay::{BLOCK, FreeRtos};
 use esp_idf_svc::hal::gpio::{AnyIOPin, PinDriver};
 use esp_idf_svc::hal::i2c::I2cDriver;
+use esp_idf_svc::hal::sd::{SdCardConfiguration, SdCardDriver};
+use esp_idf_svc::hal::sd::spi::SdSpiHostDriver;
+use esp_idf_svc::hal::spi::{Dma, SpiDriver, SpiDriverConfig};
 use esp_idf_svc::hal::units::Hertz;
-use esp_idf_svc::{hal::gpio::Pin, sys::EspError};
+use esp_idf_svc::sys::EspError;
 
 use crate::gps::GPSDriver;
 use crate::pressure_sensor::PressureSensor;
 use crate::scd41::SCD41;
+use crate::sd_card::{mount_sd_card, write_data_types};
 
 mod gps;
 mod pressure_sensor;
 mod scd41;
+mod sd_card;
 
 fn main() -> Result<(), EspError> {
     // It is necessary to call this function once. Otherwise, some patches to the runtime
@@ -26,8 +34,8 @@ fn main() -> Result<(), EspError> {
     // Bind the log crate to the ESP Logging facilities
     esp_idf_svc::log::EspLogger::initialize_default();
 
-    let peripherals = esp_idf_svc::hal::peripherals::Peripherals::take().unwrap();
-    //let mut led = hal::gpio::PinDriver::output(peripherals.pins.gpio17)?;
+    let mut peripherals = esp_idf_svc::hal::peripherals::Peripherals::take().unwrap();
+    //let mut led = hal::gpio::PinDriver::output(ripherals.pins.gpio17)?;
     let sda = peripherals.pins.gpio21;
     let scl = peripherals.pins.gpio22;
     let i2c = peripherals.i2c0;
@@ -54,11 +62,12 @@ fn main() -> Result<(), EspError> {
         &i2c_config,
     )?));
 
+
     let mut time = 0;
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = std::sync::mpsc::channel::<DataTypes>();
     let i2c_driver_clone = Arc::clone(&i2c_driver);
     let tx_clone = tx.clone();
-    
+
     std::thread::spawn(move || {
         pressure_sensor_thread(i2c_driver_clone, tx_clone).unwrap();
     });
@@ -86,17 +95,58 @@ fn main() -> Result<(), EspError> {
         println!("juups: {:?}", buf);
         return Ok(());
     */
-    println!("WHAAAAT");
-    let bin_serial = Serial::default();
+    let spi_driver_config = SpiDriverConfig::new().dma(Dma::Auto(4096));
+    let spi_driver = SpiDriver::new(
+        peripherals.spi3,
+        peripherals.pins.gpio18,
+        peripherals.pins.gpio23,
+        Some(peripherals.pins.gpio19),
+        &spi_driver_config,
+    )?;
+    let spi = SdSpiHostDriver::new(
+        spi_driver,
+        Some(peripherals.pins.gpio4),
+        None::<AnyIOPin>,
+        None::<AnyIOPin>,
+        None::<AnyIOPin>,
+        None,
+    )?;
+    let sd_card_driver = SdCardDriver::new_spi(spi, &SdCardConfiguration::new()).expect("no sd card found");
+    let _mounted_sd = esp_idf_svc::io::vfs::MountedFatfs::mount(
+        Fatfs::new_sdcard(0, sd_card_driver)?,
+        "/sdcard",
+        4,
+    )?;
+    let mut bin_serial = Serial::default();
     loop {
         delay.delay_ms(10);
-        //let mut buf = [0; 255];
-        //uart2.read(&mut buf, BLOCK);
         time += 1;
         for data_type in rx.try_iter() {
             let message = Message::new(time, data_type);
+            write_data_types(message.clone(), time);
             let data = bin_serial.to_message(message).unwrap();
             uart2.write(data.as_slice())?;
+        }
+        let mut buf = [0; 255];
+        match uart2.read(&mut buf, BLOCK) {
+            Err(_) => (),
+            Ok(num) => {
+                if let Some(signals) = bin_serial.read::<communication::data::SatControl>(buf[..num].to_vec())
+                {
+                    for signal in signals {
+                        let Ok(signal) = signal else {
+                            continue;
+                        };
+                        match signal {
+                            communication::data::SatControl::CloseMotor => (),
+                        }
+                        
+                    }
+                }
+        //let mut buf = [0; 255];
+        //uart2.read(&mut buf, BLOCK);
+            }
+
         }
     }
 }
@@ -123,7 +173,10 @@ fn pressure_sensor_thread(
 
 fn co2_thread(i2c: Arc<Mutex<I2cDriver>>, tx: Sender<DataTypes>) -> Result<(), EspError> {
     let mut i2c_driver = i2c.lock().unwrap();
-    let c02_sensor = SCD41::init_measurements(&mut i2c_driver)?;
+    let Ok(c02_sensor) = SCD41::init_measurements(&mut i2c_driver) else {
+        log::error!("failed to init co2 sensor");
+        return Ok(());
+    };
     drop(i2c_driver);
     loop {
         FreeRtos::delay_ms(5000);
@@ -137,7 +190,10 @@ fn co2_thread(i2c: Arc<Mutex<I2cDriver>>, tx: Sender<DataTypes>) -> Result<(), E
 fn gps_thread(i2c: Arc<Mutex<I2cDriver>>, tx: Sender<DataTypes>) -> Result<(), EspError> {
     let mut i2c_driver = i2c.lock().unwrap();
 
-    let mut gps_driver = GPSDriver::init(&mut i2c_driver)?;
+    let Ok(mut gps_driver) = GPSDriver::init(&mut i2c_driver) else {
+        log::error!("failed to init gps sensor");
+        return Ok(());
+    };
     drop(i2c_driver);
     loop {
         FreeRtos::delay_ms(200);
@@ -146,7 +202,6 @@ fn gps_thread(i2c: Arc<Mutex<I2cDriver>>, tx: Sender<DataTypes>) -> Result<(), E
         };
         for data in data_vec {
             tx.send(DataTypes::GPS(data)).unwrap();
-            
         }
     }
 }
