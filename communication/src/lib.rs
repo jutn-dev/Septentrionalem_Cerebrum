@@ -13,7 +13,11 @@ pub mod data {
     #[cfg(not(feature = "bevy"))]
     use glam::Vec3;
     use serde::{Deserialize, Serialize};
-    
+   
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub enum SatControl {
+        CloseMotor
+    }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[cfg_attr(feature = "bevy", derive(Reflect))]
