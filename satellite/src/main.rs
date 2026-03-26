@@ -10,18 +10,11 @@ use esp_idf_svc::hal;
 use esp_idf_svc::hal::delay::{BLOCK, FreeRtos};
 use esp_idf_svc::hal::gpio::{AnyIOPin, PinDriver};
 use esp_idf_svc::hal::i2c::I2cDriver;
-<<<<<<< HEAD
-use esp_idf_svc::hal::ledc::config::TimerConfig;
-use esp_idf_svc::hal::ledc::{LedcDriver, LedcTimerDriver};
-use esp_idf_svc::hal::units::{Frequency, Hertz};
-use esp_idf_svc::{hal::gpio::Pin, sys::EspError};
-=======
 use esp_idf_svc::hal::sd::{SdCardConfiguration, SdCardDriver};
 use esp_idf_svc::hal::sd::spi::SdSpiHostDriver;
 use esp_idf_svc::hal::spi::{Dma, SpiDriver, SpiDriverConfig};
 use esp_idf_svc::hal::units::Hertz;
 use esp_idf_svc::sys::EspError;
->>>>>>> master
 
 use crate::gps::GPSDriver;
 use crate::pressure_sensor::PressureSensor;
