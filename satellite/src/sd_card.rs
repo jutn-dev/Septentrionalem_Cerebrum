@@ -35,7 +35,6 @@ pub fn write_data_types(message: Message) {
         DataTypes::PressureSensor(_) => write_into_file(message, "/sdcard/pressure.json"),
         DataTypes::CO2Sensor(_) => write_into_file(message, "/sdcard/co2.json"),
         DataTypes::GPS(_) => write_into_file(message, "/sdcard/gps.json"),
-
     }
 }
 
