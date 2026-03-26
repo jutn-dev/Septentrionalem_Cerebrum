@@ -111,24 +111,35 @@ fn main() -> Result<(), EspError> {
         None::<AnyIOPin>,
         None,
     )?;
-    let sd_card_driver = SdCardDriver::new_spi(spi, &SdCardConfiguration::new()).expect("no sd card found");
-    let _mounted_sd = esp_idf_svc::io::vfs::MountedFatfs::mount(
-        Fatfs::new_sdcard(0, sd_card_driver)?,
-        "/sdcard",
-        4,
-    )?;
+    let mut sd_card_available = false;
+    let mut _mounted_sd;
+    if let Ok(sd_card_driver) = SdCardDriver::new_spi(spi, &SdCardConfiguration::new()) {
+
+        _mounted_sd = esp_idf_svc::io::vfs::MountedFatfs::mount(
+            Fatfs::new_sdcard(0, sd_card_driver)?,
+            "/sdcard",
+            4,
+        ).expect("sd card not partitioned properly");
+        sd_card_available = true;
+    }
+    else {
+        log::error!("no sd card found")
+    }
     let mut bin_serial = Serial::default();
     loop {
-        delay.delay_ms(10);
+        FreeRtos::delay_ms(10);
         time += 1;
         for data_type in rx.try_iter() {
             let message = Message::new(time, data_type);
-            write_data_types(message.clone(), time);
-            let data = bin_serial.to_message(message).unwrap();
+            let data = bin_serial.to_message(message.clone()).unwrap();
             uart2.write(data.as_slice())?;
+            if sd_card_available {
+                write_data_types(message);
+            }
         }
         let mut buf = [0; 255];
-        match uart2.read(&mut buf, BLOCK) {
+        /*
+        match uart2.read(&mut buf, ) {
             Err(_) => (),
             Ok(num) => {
                 if let Some(signals) = bin_serial.read::<communication::data::SatControl>(buf[..num].to_vec())
@@ -148,6 +159,7 @@ fn main() -> Result<(), EspError> {
             }
 
         }
+        */
     }
 }
 

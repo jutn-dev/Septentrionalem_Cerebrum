@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{fs::File, io::Write};
 
 use communication::data::{DataTypes, Message};
 use esp_idf_svc::{fs::fatfs::Fatfs, hal::{gpio::AnyIOPin, peripherals::Peripherals, sd::{SdCardConfiguration, SdCardDriver, spi::SdSpiHostDriver}, spi::{Dma, SpiDriver, SpiDriverConfig}}, sys::EspError};
@@ -30,18 +30,22 @@ pub fn mount_sd_card(peripherals: Peripherals) -> Result<(), EspError> {
     Ok(())
 }
 
-pub fn write_data_types(message: Message, time: u64) {
+pub fn write_data_types(message: Message) {
     match message.data {
-        DataTypes::PressureSensor(_) => write_into_file(message, time, "/sdcard/pressure.csv"),
-        DataTypes::CO2Sensor(_) => write_into_file(message, time, "/sdcard/co2.csv"),
-        DataTypes::GPS(_) => write_into_file(message, time, "/sdcard/gps.csv"),
+        DataTypes::PressureSensor(_) => write_into_file(message, "/sdcard/pressure.json"),
+        DataTypes::CO2Sensor(_) => write_into_file(message, "/sdcard/co2.json"),
+        DataTypes::GPS(_) => write_into_file(message, "/sdcard/gps.json"),
 
     }
 }
 
-fn write_into_file<T: serde::Serialize>(item: T, time: u64, path: &str) {
-    let file = File::options().append(true).create(true).open(path).unwrap();
-    let mut csv = csv::Writer::from_writer(file);
+fn write_into_file<T: serde::Serialize>(item: T, path: &str) {
+    log::info!("file: {}", path);
+    let mut file = File::options().read(true).append(true).create(true).open(path).unwrap();
+    let json_string = serde_json::to_string(&item).unwrap();
+    write!(file, "{}", json_string);
+    /*let mut csv = csv::Writer::from_writer(file);
     csv.serialize(item).unwrap();
     csv.flush().unwrap();
+    */
 }
