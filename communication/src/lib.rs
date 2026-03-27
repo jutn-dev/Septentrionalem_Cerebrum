@@ -38,9 +38,11 @@ pub mod data {
         PressureSensor(PressureSensorData),
         CO2Sensor(CO2SensorData),
         GPS(GPSData),
+        Misc(MiscData),
+        Gyroscope(GyroscopeData),
+        Acceleration(AccelerationData)
         
         //FullTemp(PressureData),
-        //Gyroscope(GyroscopeData)
     }
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     #[cfg_attr(feature = "bevy", derive(Reflect))]
@@ -70,11 +72,21 @@ pub mod data {
        pub satellites_used: u8,
        pub altitude: f32,
     }
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[cfg_attr(feature = "bevy", derive(Reflect))]
+    pub struct MiscData {
+        pub ldr: u16,
+    }
 
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     #[cfg_attr(feature = "bevy", derive(Reflect))]
     pub struct GyroscopeData {
-        gyro: Vec3,
+        pub gyro: Vec3,
+    }
+    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[cfg_attr(feature = "bevy", derive(Reflect))]
+    pub struct AccelerationData {
+        pub accel: Vec3,
     }
 }
 

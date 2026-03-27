@@ -28,6 +28,8 @@ esp-idf-svc = {version = "0.51", features = ["experimental"]}
 communication = {path = "../communication/"}
 serde = {version = "1.0", features = ["derive"]}
 serde_json = "1.0"
+glam = "0.32"
+chrono = "0.4"
 #csv = {version = "1.4"}
 
 # --- Optional Embassy Integration ---

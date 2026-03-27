@@ -37,12 +37,12 @@ fn setup(
 }
 
 fn update_cansat_model(mut model: Single<&mut Transform, With<CanSatModel>>, data: Res<Data>) {
-    /*let Some(current_data) = data.get_closest_point_in_time(data.current_time) else {
+    let Some((_time, position)) = data.data_points.position.iter().filter(|f|*f.0 < data.current_time).min_by_key(|p| p.0.abs_diff(data.current_time)) else {
         return;
     };
-    let position = data.get_point_relative_position(current_data);
+    let position = data.get_point_relative_position(position);
     model.translation = position;
-    */
+    
 }
 
 fn update_gizmos(mut gizmos: Gizmos<Gizmos3D>, data: Res<Data>) {

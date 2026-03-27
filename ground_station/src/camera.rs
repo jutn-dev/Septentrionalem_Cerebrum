@@ -75,12 +75,9 @@ fn camera_movement(
 
 fn set_camera_target(mut camera: Single<&mut OrbitCamera, With<Camera3d>>, data: Res<Data>) {
     
-    /*
-    let current_data = data.get_closest_point_in_time(data.current_time);
-    let Some(current_data) = current_data else {
+    let Some((_time, position)) = data.data_points.position.iter().filter(|f|*f.0 < data.current_time).min_by_key(|p| p.0.abs_diff(data.current_time)) else {
         return;
     };
-    let position = data.get_point_relative_position(current_data);
+    let position = data.get_point_relative_position(position);
     camera.target_position = position;
-    */
 }

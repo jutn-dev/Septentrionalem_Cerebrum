@@ -32,18 +32,20 @@ pub fn mount_sd_card(peripherals: Peripherals) -> Result<(), EspError> {
 
 pub fn write_data_types(message: Message) {
     match message.data {
-        DataTypes::PressureSensor(_) => write_into_file(message, "/sdcard/pressure.json"),
-        DataTypes::CO2Sensor(_) => write_into_file(message, "/sdcard/co2.json"),
-        DataTypes::GPS(_) => write_into_file(message, "/sdcard/gps.json"),
-        DataTypes::Misc(_) => write_into_file(message, "/sdcard/misc.json"),
+        DataTypes::PressureSensor(_) => write_into_file(message, "/sdcard/p.txt"),
+        DataTypes::CO2Sensor(_) => write_into_file(message, "/sdcard/co2.txt"),
+        DataTypes::GPS(_) => write_into_file(message, "/sdcard/gps.txt"),
+        DataTypes::Misc(_) => write_into_file(message, "/sdcard/misc.txt"),
+        _ => (),
     }
 }
 
 fn write_into_file<T: serde::Serialize>(item: T, path: &str) {
-    log::info!("file: {}", path);
-    let mut file = File::options().read(true).append(true).create(true).open(path).unwrap();
+    let Ok(mut file) = File::create(path) else {
+        return;
+    };
     let json_string = serde_json::to_string(&item).unwrap();
-    write!(file, "{}", json_string);
+    write!(file, "{},", json_string);
     /*let mut csv = csv::Writer::from_writer(file);
     csv.serialize(item).unwrap();
     csv.flush().unwrap();

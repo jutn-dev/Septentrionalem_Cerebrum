@@ -5,7 +5,7 @@ use std::{
 };
 
 use bevy::{math::VectorSpace, prelude::*};
-use communication::data::{CO2SensorData, DataTypes, GPSData, PressureSensorData};
+use communication::data::{CO2SensorData, DataTypes, GPSData, MiscData, PressureSensorData};
 use egui_plot::PlotPoints;
 use proj::Proj;
 use serde::{Deserialize, Serialize};
@@ -38,6 +38,7 @@ pub struct DataPoints {
     pub position: BTreeMap<u64, Position>,
     pub pressure_data: BTreeMap<u64, PressureSensorData>,
     pub co2_data: BTreeMap<u64, CO2SensorData>,
+    pub misc_data: BTreeMap<u64, MiscData>,
 }
 
 #[allow(unused)]
@@ -83,16 +84,8 @@ impl Data {
     /// returns relative position of data point. If no data point exists or specific `DataPoint`
     /// doesn't exists returns `None`
     pub fn get_point_relative_position(&self, position: &Position) -> Vec3 {
-        let relative_position = self.center_position - position.position;
-        relative_position
+        self.center_position - position.position
     }
-
-    /*
-    pub fn get_closest_point_in_time(&self, time: u64) -> Option<&DataPoints> {
-        self.data_points
-            .iter()
-            .min_by_key(|d| d.time.abs_diff(time))
-    }*/
 
     pub fn extend(&mut self, message: &communication::data::Message) {
         match message.data.clone() {
@@ -104,24 +97,23 @@ impl Data {
             DataTypes::CO2Sensor(co2_data) => {
                 self.data_points.co2_data.insert(message.time, co2_data);
             }
-            _=>(),
-            /*
             DataTypes::GPS(gps_data) => {
                 self.data_points.position.insert(
                     message.time,
                     Position {
-                        position: Position::get_position(&gps_data),
+                        position: self.get_position(&gps_data, message.time),
                         gps_data,
                     },
                 );
-            }*/
+            }
+            DataTypes::Misc(m) => {
+                self.data_points.misc_data.insert(message.time, m);
+            },
+            _ => (),
         }
     }
-}
-
-impl Position {
     //get position from Coordinate.
-    pub fn get_position(gps_data: &GPSData) -> Vec3 {
+    pub fn get_position(&self, gps_data: &GPSData, time: u64) -> Vec3 {
         let from = "EPSG:4326";
         let to = "EPSG:3857";
         let wsg84_to_epsg3857 = Proj::new_known_crs(from, to, None).unwrap();
@@ -130,8 +122,23 @@ impl Position {
         let coordinate = wsg84_to_epsg3857
             .convert((gps_data.lon, gps_data.lat))
             .unwrap();
-        Vec3::new(coordinate.0, 0., coordinate.1)
-        //Vec3::ZERO
+        let Some((_time, pressure_data)) = self
+            .data_points
+            .pressure_data
+            .iter()
+            .filter(|f| *f.0 < time)
+            .min_by_key(|p| p.0.abs_diff(time))
+        else {
+            return Vec3::new(coordinate.0, 0., coordinate.1);
+        };
+        Vec3::new(
+            coordinate.0,
+            Self::calculate_height_from_pressure(pressure_data.pressure),
+            coordinate.1,
+        )
+    }
+    fn calculate_height_from_pressure(pressure: f32) -> f32 {
+        44330.0 * (1.-f32::powf(pressure/1013.25, 0.190295))
     }
 }
 

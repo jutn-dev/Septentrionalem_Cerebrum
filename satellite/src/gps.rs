@@ -1,5 +1,6 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc::Sender};
 
+use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use esp_idf_svc::{
     hal::{
         delay::BLOCK,
@@ -32,7 +33,7 @@ impl GPSDriver {
     })
 
     }
-    pub fn get_data(&mut self, i2c: &Arc<Mutex<I2cDriver>>) -> Result<Option<Vec<GPSData>>, EspError> {
+    pub fn get_data(&mut self, i2c: &Arc<Mutex<I2cDriver>>, time_tx: &mut Sender<u64>) -> Result<Option<Vec<GPSData>>, EspError> {
         //TODO ADD TIMEOUTS
         let mut buf = [0; 64];
         let mut i2c_driver = i2c.lock().unwrap();
@@ -45,6 +46,12 @@ impl GPSDriver {
         for s in strings {
             let data: Vec<&str> = s.split(',').collect();
             if data[0] == "GNGGA" {
+                let hours: u32 = data[1][0..2].parse().unwrap();
+                let minutes: u32 = data[1][2..4].parse().unwrap();
+                let seconds: u32 = data[1][5..6].parse().unwrap();
+                let m_seconds: u32 = data[1][8..].parse().unwrap();
+                let dt: DateTime<Utc> = Utc.with_ymd_and_hms(2016, 3, 27, hours, minutes, seconds).unwrap();
+                time_tx.send(dt.timestamp_millis() as u64).unwrap();
                 if data[2].is_empty() {
                     continue;
                 }
