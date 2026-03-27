@@ -45,7 +45,6 @@ impl GPSDriver {
         for s in strings {
             let data: Vec<&str> = s.split(',').collect();
             if data[0] == "GNGGA" {
-                println!("gps data: {}", s); 
                 if data[2].is_empty() {
                     continue;
                 }

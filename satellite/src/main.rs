@@ -3,13 +3,17 @@ use std::io::Write;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
-use communication::data::{DataTypes, Message};
+use communication::data::{DataTypes, Message, MiscData};
 use communication::Serial;
 use esp_idf_svc::fs::fatfs::Fatfs;
 use esp_idf_svc::hal;
+use esp_idf_svc::hal::adc::oneshot::{AdcChannelDriver, AdcDriver};
+use esp_idf_svc::hal::adc::oneshot::config::AdcChannelConfig;
 use esp_idf_svc::hal::delay::{BLOCK, FreeRtos};
 use esp_idf_svc::hal::gpio::{AnyIOPin, PinDriver};
 use esp_idf_svc::hal::i2c::I2cDriver;
+use esp_idf_svc::hal::ledc::config::TimerConfig;
+use esp_idf_svc::hal::ledc::{LedcDriver, LedcTimerDriver};
 use esp_idf_svc::hal::sd::{SdCardConfiguration, SdCardDriver};
 use esp_idf_svc::hal::sd::spi::SdSpiHostDriver;
 use esp_idf_svc::hal::spi::{Dma, SpiDriver, SpiDriverConfig};
@@ -35,11 +39,18 @@ fn main() -> Result<(), EspError> {
     esp_idf_svc::log::EspLogger::initialize_default();
 
     let mut peripherals = esp_idf_svc::hal::peripherals::Peripherals::take().unwrap();
+    
     //let mut led = hal::gpio::PinDriver::output(ripherals.pins.gpio17)?;
     let sda = peripherals.pins.gpio21;
     let scl = peripherals.pins.gpio22;
     let i2c = peripherals.i2c0;
 
+    let mut ldr_enable_pin = PinDriver::output(peripherals.pins.gpio13)?;
+    ldr_enable_pin.set_high()?;
+
+
+    let mut uart_set_pin = PinDriver::output(peripherals.pins.gpio15)?;
+    uart_set_pin.set_high()?;
     let uart_config = hal::uart::config::Config::new().baudrate(hal::units::Hertz(9_600));
     let uart2 = esp_idf_svc::hal::uart::UartDriver::new(
         peripherals.uart2,
@@ -49,6 +60,8 @@ fn main() -> Result<(), EspError> {
         Option::<AnyIOPin>::None,
         &uart_config,
     )?;
+
+
     let delay = esp_idf_svc::hal::delay::Delay::new_default();
 
     let i2c_config = hal::i2c::config::Config::new()
@@ -71,17 +84,28 @@ fn main() -> Result<(), EspError> {
     std::thread::spawn(move || {
         pressure_sensor_thread(i2c_driver_clone, tx_clone).unwrap();
     });
+    
     let i2c_driver_clone = Arc::clone(&i2c_driver);
     let tx_clone = tx.clone();
     std::thread::spawn(move || {
         co2_thread(i2c_driver_clone, tx_clone).unwrap();
     });
+    
     let i2c_driver_clone = Arc::clone(&i2c_driver);
+    let tx_clone = tx.clone();
     std::thread::spawn(move || {
-        gps_thread(i2c_driver_clone, tx).unwrap();
+        gps_thread(i2c_driver_clone, tx_clone).unwrap();
     });
-    let mut set_pin = PinDriver::output(peripherals.pins.gpio15)?;
-    set_pin.set_high()?;
+    
+    //ldr 
+    let adc = AdcDriver::new(peripherals.adc1)?;
+    let adc_pin = AdcChannelDriver::new(adc, peripherals.pins.gpio34, &AdcChannelConfig::new())?;
+    let timer_driver = LedcTimerDriver::new(peripherals.ledc.timer0, &TimerConfig::new().frequency(Hertz(50)))?;
+    let servo = LedcDriver::new(peripherals.ledc.channel0, timer_driver, peripherals.pins.gpio27)?;
+    let tx_clone = tx.clone();
+    std::thread::spawn(move || {
+        ldr_opening_system_thread(servo, adc_pin, tx_clone).unwrap();
+    });
     /*FreeRtos::delay_ms(500);
         set_pin.set_low()?;
         FreeRtos::delay_ms(1000);
@@ -161,6 +185,25 @@ fn main() -> Result<(), EspError> {
         }
         */
     }
+}
+
+fn ldr_opening_system_thread<'a>(
+    mut servo: LedcDriver,
+    mut adc: AdcChannelDriver<'a, hal::gpio::Gpio34, AdcDriver<'a, hal::adc::ADC1>>,
+    tx: Sender<DataTypes>,
+) -> Result<(), EspError> {
+    servo.set_duty(10)?; 
+    FreeRtos::delay_ms(5000);
+   loop {
+       FreeRtos::delay_ms(100);
+       let ldr = adc.read()?;
+       println!("ldr: {:?}", ldr);
+        if ldr < 900 {
+        FreeRtos::delay_ms(6000);
+        servo.set_duty(15)?;
+        tx.send(DataTypes::Misc(MiscData {ldr})).unwrap();
+        }
+   }
 }
 
 fn pressure_sensor_thread(
