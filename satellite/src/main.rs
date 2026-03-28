@@ -184,10 +184,6 @@ fn main() -> Result<(), EspError> {
     loop {
         FreeRtos::delay_ms(10);
         time += 1;
-        for t in time_rx.try_iter() {
-            time = t;
-            last_time = Instant::now();
-        }
         for data_type in rx.try_iter() {
             let message = Message::new(time + last_time.elapsed().as_millis() as u64, data_type);
             let data = bin_serial.to_message(message.clone()).unwrap();
