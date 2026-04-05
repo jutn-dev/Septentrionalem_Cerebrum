@@ -25,6 +25,7 @@ pub struct Data {
     //If not you might get some unexpected results.
     pub data_points: DataPoints,
     pub current_time: u64,
+    pub select_start_time: u64,
     center_position: Vec3,
 }
 
@@ -51,11 +52,12 @@ impl Data {
                 // if coming from previous git commit
                 // positions do not get created automatically
 
-                return Ok(Data {
-                    center_position: Vec3::ZERO, //Data::get_center_position(&data),
+                Ok(Data {
+                    center_position: data.position.first_entry().unwrap().get().position, //Data::get_center_position(&data),
                     current_time: 0,
+                    select_start_time: 0,
                     data_points: data,
-                });
+                })
             }
             Err(error) => {
                 error!("Loading json file failed: {error}");
@@ -68,7 +70,19 @@ impl Data {
         let mut file = File::create(path).unwrap();
         write!(file, "{}", json_string);
     }
-
+    pub fn remove_data(&mut self, range: std::ops::Range<u64>) {
+        for (i, map) in self
+            .data_points
+            .reflect_mut()
+            .as_struct()
+            .iter_mut()
+            .enumerate()
+        {
+            for key in range.clone() {
+                map.reflect_mut().as_map().unwrap().remove(&key);
+            }
+        }
+    }
     /*
     // vec should be sorted when using this function
     // if no coordinates found returns Vec3::Zero
@@ -84,7 +98,7 @@ impl Data {
     /// returns relative position of data point. If no data point exists or specific `DataPoint`
     /// doesn't exists returns `None`
     pub fn get_point_relative_position(&self, position: &Position) -> Vec3 {
-        self.center_position - position.position
+        position.position - self.center_position 
     }
 
     pub fn extend(&mut self, message: &communication::data::Message) {
@@ -108,7 +122,7 @@ impl Data {
             }
             DataTypes::Misc(m) => {
                 self.data_points.misc_data.insert(message.time, m);
-            },
+            }
             _ => (),
         }
     }
@@ -138,7 +152,7 @@ impl Data {
         )
     }
     fn calculate_height_from_pressure(pressure: f32) -> f32 {
-        44330.0 * (1.-f32::powf(pressure/1013.25, 0.190295))
+        44330.0 * (1. - f32::powf(pressure / 1013.25, 0.190295))
     }
 }
 
