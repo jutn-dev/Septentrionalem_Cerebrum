@@ -59,5 +59,5 @@ fn update_gizmos(mut gizmos: Gizmos<Gizmos3D>, data: Res<Data>) {
             coordinates.push(data.get_point_relative_position(position));
     }
 
-    gizmos.linestrip(coordinates, Color::WHITE);
+    gizmos.linestrip(coordinates, Color::BLACK);
 }

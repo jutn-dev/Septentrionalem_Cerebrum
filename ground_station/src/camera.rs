@@ -25,6 +25,7 @@ impl Plugin for OrbitCameraPlugin {
         app.add_systems(Startup, spawn_camera);
         app.add_systems(Update, camera_movement.run_if(not(egui_wants_any_input)));
         app.add_systems(Update, set_camera_target);
+        app.insert_resource(ClearColor(Color::srgb(0.9, 0.9, 1.)));
     }
 }
 

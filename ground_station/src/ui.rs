@@ -1,26 +1,27 @@
-use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::RangeInclusive;
+use std::sync::Arc;
 
+use bevy::log::tracing::Span;
 use bevy::math::f64;
 use bevy::prelude::*;
-use bevy::reflect::DynamicTypePath;
-use bevy::reflect::DynamicTyped;
-use bevy::reflect::Map;
 use bevy::reflect::ReflectRef;
+use bevy_inspector_egui::bevy_egui::EguiContextSettings;
 use bevy_inspector_egui::bevy_egui::EguiContexts;
 use bevy_inspector_egui::bevy_egui::EguiPrimaryContextPass;
 use bevy_inspector_egui::egui;
-use bevy_inspector_egui::egui::Grid;
-use bevy_inspector_egui::egui::epaint::tessellator::path;
 use bevy_inspector_egui::egui::Button;
 use bevy_inspector_egui::egui::Color32;
 use bevy_inspector_egui::egui::ComboBox;
 use bevy_inspector_egui::egui::DragValue;
+use bevy_inspector_egui::egui::RichText;
+use bevy_inspector_egui::egui::Style;
 use bevy_inspector_egui::egui::TextEdit;
 use bevy_inspector_egui::egui::Ui;
 use bevy_inspector_egui::egui::Vec2b;
+use bevy_inspector_egui::egui::Visuals;
+use bevy_inspector_egui::egui::WidgetText;
 use chrono::DateTime;
 use chrono::Timelike;
 use egui_plot::PlotUi;
@@ -41,7 +42,10 @@ impl Plugin for CanSatUIPlugin {
         app.init_resource::<LoadDataFile>()
             .init_resource::<LoadDataSerial>()
             .init_resource::<GraphResource>()
-            .add_systems(EguiPrimaryContextPass, (data_ui, graph_ui, time_line_ui));
+            .init_resource::<TimelineResource>()
+            .add_systems(EguiPrimaryContextPass, setup)
+            .add_systems(EguiPrimaryContextPass, time_line_ui)
+            .add_systems(EguiPrimaryContextPass, (graph_ui, data_ui));
     }
 }
 
@@ -56,6 +60,10 @@ enum LoadDataMode {
 #[derive(Debug, Clone, Resource, Default)]
 struct GraphResource {
     buttons_pressed: HashMap<String, bool>,
+}
+#[derive(Debug, Clone, Resource, Default)]
+struct TimelineResource {
+    playing: bool,
 }
 
 #[derive(Debug, Clone, Resource, Default)]
@@ -77,7 +85,11 @@ impl Default for LoadDataSerial {
         }
     }
 }
-
+fn setup(mut egui_contexts: Query<(&mut EguiContextSettings)>) {
+    for mut egui_settings in egui_contexts {
+        egui_settings.scale_factor = 2.0 
+    }
+}
 fn data_ui(
     mut context: EguiContexts,
     mut data: ResMut<Data>,
@@ -131,15 +143,34 @@ fn data_ui(
     });
 }
 
-fn time_line_ui(mut context: EguiContexts, mut data: ResMut<Data>) {
+fn time_line_ui(mut context: EguiContexts, mut data: ResMut<Data>, mut timeline_res: ResMut<TimelineResource>, mut ui_scale: ResMut<UiScale>) {
+    let ctx = context.ctx_mut().unwrap();
+    ui_scale.0 = 5.;
+    //ctx.set_pixels_per_point(1.5);
+    ctx.set_style(Style {
+        visuals: Visuals::light(),
+        ..default()
+    });
     egui::TopBottomPanel::bottom("Timeline")
         .resizable(true)
-        .show(context.ctx_mut().unwrap(), |ui| {
+        .show(ctx, |ui| {
             let mut data_button_clicked = false;
             ui.horizontal(|ui| {
                 ui.heading("Timeline");
                 data_button_clicked = ui.add(Button::new("Data")).clicked();
                 ui.label(time_formatter(data.current_time));
+                
+                if timeline_res.playing {
+                    data.current_time += 100; 
+                     if ui.add(Button::new("⏸︎")).clicked() {
+                     timeline_res.playing = false   
+                    };
+                }
+                else {
+                    if ui.add(Button::new("▶")).clicked(){
+                     timeline_res.playing = true   
+                    };
+                }
             });
             /*
             let points: Vec<[f64; 2]> = data
@@ -159,7 +190,6 @@ fn time_line_ui(mut context: EguiContexts, mut data: ResMut<Data>) {
                 .allow_zoom(Vec2b::new(true, false))
                 //.x_grid_spacer(log_grid_spacer(10))
                 .show(ui, |plot_ui| {
-
                     //plot_ui.points(Points::new("time points", points.clone()).radius(5.));
                     for field in data.data_points.iter_fields() {
                         let s = field.reflect_ref();
@@ -173,20 +203,42 @@ fn time_line_ui(mut context: EguiContexts, mut data: ResMut<Data>) {
                             }
                             ReflectRef::Struct(_) => (),
                             _ => (),
-                        }}
-                    plot_ui.vline(VLine::new("", data.current_time as f64).color(Color32::RED));
+                        }
+                    }
+                    if data.select_start_time != data.current_time {}
+                    plot_ui.vline(VLine::new("", data.current_time as f64).color(Color32::RED).width(5.0));
                 });
 
-            if plot.response.dragged_by(egui::PointerButton::Primary)
-                || plot.response.clicked_by(egui::PointerButton::Primary)
-            {
-                let point = plot
-                    .transform
-                    .value_from_position(plot.response.hover_pos().unwrap());
-                data.current_time = point.x.round() as u64;
-                println!("time; {:?}", point);
+            if ui.input(|i| i.modifiers.ctrl) {
+                if plot.response.dragged_by(egui::PointerButton::Primary) {
+                    let cursor_point = plot
+                        .transform
+                        .value_from_position(plot.response.hover_pos().unwrap());
+                    data.select_start_time = cursor_point.x.round() as u64;
+                    timeline_res.playing = false;
+                }
+                if plot.response.clicked_by(egui::PointerButton::Primary) {
+                    let cursor_point = plot
+                        .transform
+                        .value_from_position(plot.response.hover_pos().unwrap());
+                    data.current_time = cursor_point.x.round() as u64;
+                    data.select_start_time = cursor_point.x.round() as u64;
+                    timeline_res.playing = false;
+                }
+            } else {
+                if plot.response.dragged_by(egui::PointerButton::Primary)
+                    || plot.response.clicked_by(egui::PointerButton::Primary)
+                {
+                    let cursor_point = plot
+                        .transform
+                        .value_from_position(plot.response.hover_pos().unwrap());
+                    data.current_time = cursor_point.x.round() as u64;
+                    data.select_start_time = cursor_point.x.round() as u64;
+                    timeline_res.playing = false;
+                }
             }
-        });}
+        });
+}
 
 fn graph_ui(
     mut context: EguiContexts,
@@ -206,7 +258,14 @@ fn graph_ui(
                             .iter()
                             .map(|f| (*f.0.try_downcast_ref::<u64>().unwrap(), f.1))
                             .collect();
-                        graph_buttons_data(vec, None, None, &mut graph_res.buttons_pressed, data.current_time, ui);
+                        graph_buttons_data(
+                            vec,
+                            None,
+                            None,
+                            &mut graph_res.buttons_pressed,
+                            data.current_time,
+                            ui,
+                        );
                     }
                     ReflectRef::Struct(_) => (),
                     _ => (),
@@ -240,6 +299,7 @@ fn graph_ui(
                 .formatter(x_axis_time_formatter)];
 
             Plot::new("Graph")
+                .x_axis_label(WidgetText::RichText(Arc::new( RichText::new("").size(100.))))
                 .legend(Legend::default())
                 .custom_x_axes(x_axis)
                 .x_grid_spacer(log_grid_spacer(10))
@@ -256,13 +316,13 @@ fn graph_ui(
                                     .iter()
                                     .map(|f| (*f.0.try_downcast_ref::<u64>().unwrap(), f.1))
                                     .collect();
-                                graph_from_data(vec, None, plot_ui, &mut graph_res.buttons_pressed);
+                                graph_from_data(vec,None, None, plot_ui, &mut graph_res.buttons_pressed);
                             }
                             ReflectRef::Struct(_) => (),
                             _ => (),
                         }
                     }
-                    //plot_ui.vline(VLine::new("", data.current_time as f64).color(Color32::RED));
+                    plot_ui.vline(VLine::new("", data.current_time as f64).color(Color32::RED).width(5.0));
                 });
         });
 }
@@ -281,7 +341,96 @@ fn graph_buttons_data(
         return;
     };
     ui.horizontal(|ui| {
+        if vec_first.1.reflect_ref().as_opaque().is_ok() {
+            let Some(type_name) = name else {
+                error!("no name for data");
+                return;
+            };
+            let Some(type_path) = path else {
+                error!("no path name for data");
+                return;
+            };
+            let mut button_name = format!("{}", type_name);
+            if let Some(data) = vec
+                .iter()
+                .filter(|f| f.0 < current_time)
+                .min_by_key(|p| p.0.abs_diff(current_time))
+            {
+                button_name = format!("{}: {:?}", type_name, data.1);
+            }
+            let button_state = buttons.get(&format!("{}::{}", type_path, type_name));
+            let selected = Some(&true) == button_state;
+            if ui.add(Button::selectable(selected, button_name)).clicked() {
+                if selected {
+                    buttons.insert(format!("{}::{}", type_path, type_name), false);
+                } else {
+                    buttons.insert(format!("{}::{}", type_path, type_name), true);
+                }
+            }
+        } else {
+            for (i, _) in vec_first
+                .1
+                .reflect_ref()
+                .as_struct()
+                .unwrap()
+                .iter_fields()
+                .enumerate()
+            {
+                let type_path = format!(
+                    "{:?}",
+                    vec_first
+                        .1
+                        .reflect_ref()
+                        .as_struct()
+                        .unwrap()
+                        .get_represented_struct_info()
+                        .unwrap()
+                        .ty(),
+                );
+                let type_name = vec_first
+                    .1
+                    .reflect_ref()
+                    .as_struct()
+                    .unwrap()
+                    .name_at(i)
+                    .unwrap()
+                    .to_string();
 
+                let v: Vec<(u64, &dyn PartialReflect)> = vec
+                    .iter()
+                    .map(|f| {
+                        (
+                            f.0,
+                            f.1.reflect_ref().as_struct().unwrap().field_at(i).unwrap(),
+                        )
+                    })
+                    .collect();
+
+                graph_buttons_data(
+                    v,
+                    Some(type_path),
+                    Some(type_name),
+                    buttons,
+                    current_time,
+                    ui,
+                );
+                ui.end_row();
+            }
+        }
+    });
+}
+fn graph_from_data(
+    vec: Vec<(u64, &dyn PartialReflect)>,
+    path: Option<String>,
+    name: Option<String>,
+    plot_ui: &mut PlotUi,
+    buttons: &mut HashMap<String, bool>,
+) {
+    //println!("ty: {:?}", st.get_represented_struct_info().unwrap().ty());
+    //let first_struct_item = st.field_at(0).unwrap().reflect_ref().as_struct().unwrap();
+    let Some(vec_first) = vec.first() else {
+        return;
+    };
     if vec_first.1.reflect_ref().as_opaque().is_ok() {
         let Some(type_name) = name else {
             error!("no name for data");
@@ -291,23 +440,20 @@ fn graph_buttons_data(
             error!("no path name for data");
             return;
         };
-        let mut button_name = format!("{}",type_name);
-        if let Some(data) = vec
+        if Some(&true) != buttons.get(&format!("{}::{}", type_path, type_name)) {
+            return;
+        }
+        let data: Vec<[f64; 2]> = vec
             .iter()
-            .filter(|f| f.0 < current_time)
-            .min_by_key(|p| p.0.abs_diff(current_time))
-            {
-                button_name = format!("{}: {:?}",type_name, data.1);         
-        }
-    let button_state = buttons.get(&format!("{}::{}", type_path, type_name));
-        let selected = Some(&true) == button_state;
-        if ui.add(Button::selectable(selected, button_name)).clicked() {
-            if selected {
-                buttons.insert(format!("{}::{}", type_path, type_name), false);
-            } else {
-                buttons.insert(format!("{}::{}", type_path, type_name), true);
-            }
-        }
+            .map(|f| {
+                if let Ok(point) = format!("{:?}", f.1).parse::<f64>() {
+                    return [f.0 as f64, point];
+                }
+                [f.0 as f64, 0.]
+            })
+            .collect();
+        //println!("v: {:?}", data);
+        plot_ui.line(Line::new(type_name, data).width(7.));
     } else {
         for (i, _) in vec_first
             .1
@@ -336,7 +482,6 @@ fn graph_buttons_data(
                 .name_at(i)
                 .unwrap()
                 .to_string();
-
             let v: Vec<(u64, &dyn PartialReflect)> = vec
                 .iter()
                 .map(|f| {
@@ -347,81 +492,7 @@ fn graph_buttons_data(
                 })
                 .collect();
 
-
-            graph_buttons_data(v, Some(type_path), Some(type_name), buttons,current_time, ui);
-            ui.end_row();
-        }
-    }
-    });
-}
-fn graph_from_data(
-    vec: Vec<(u64, &dyn PartialReflect)>,
-    name: Option<String>,
-    plot_ui: &mut PlotUi,
-    buttons: &mut HashMap<String, bool>,
-) {
-    //println!("ty: {:?}", st.get_represented_struct_info().unwrap().ty());
-    //let first_struct_item = st.field_at(0).unwrap().reflect_ref().as_struct().unwrap();
-    let Some(vec_first) = vec.first() else {
-        return;
-    };
-    if vec_first.1.reflect_ref().as_opaque().is_ok() {
-        let Some(name) = name else {
-            error!("no name for data");
-            return;
-        };
-        if Some(&true) != buttons.get(&name) {
-            return;
-        }
-        let data: Vec<[f64; 2]> = vec
-            .iter()
-            .map(|f| {
-                if let Ok(point) = format!("{:?}", f.1).parse::<f64>() {
-                    return [f.0 as f64, point];
-                }
-                [f.0 as f64, 0.]
-            })
-            .collect();
-        //println!("v: {:?}", data);
-        plot_ui.line(Line::new(name, data));
-    } else {
-        for (i, _) in vec_first
-            .1
-            .reflect_ref()
-            .as_struct()
-            .unwrap()
-            .iter_fields()
-            .enumerate()
-        {
-            let type_name = format!(
-                "{:?}::{}",
-                vec_first
-                    .1
-                    .reflect_ref()
-                    .as_struct()
-                    .unwrap()
-                    .get_represented_struct_info()
-                    .unwrap()
-                    .ty(),
-                vec_first
-                    .1
-                    .reflect_ref()
-                    .as_struct()
-                    .unwrap()
-                    .name_at(i)
-                    .unwrap()
-            );
-            let v: Vec<(u64, &dyn PartialReflect)> = vec
-                .iter()
-                .map(|f| {
-                    (
-                        f.0,
-                        f.1.reflect_ref().as_struct().unwrap().field_at(i).unwrap(),
-                    )
-                })
-                .collect();
-
-            graph_from_data(v, Some(type_name), plot_ui, buttons);
+            graph_from_data(v, Some(type_path), Some(type_name), plot_ui, buttons);
         }
     }
 }
@@ -451,7 +522,7 @@ fn timeline_from_data(
             error!("no name for data");
             return;
         };
-        plot_ui.points(Points::new(name, data));
+        plot_ui.points(Points::new(name, data).radius(5.0));
     } else {
         for (i, _) in vec_first
             .1
